@@ -1,0 +1,10 @@
+{
+	"image":"betterez/btrz-api-uploads",
+	"name":"btrz-api-uploads",
+	"type":"http",
+	"uri_path":"uploads",
+	"container_port": 3000,
+	"cpu": 128,
+    "memory": 64,
+    "instances":1
+}

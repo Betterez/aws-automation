@@ -1,0 +1,39 @@
+deployment:
+  elb_version: 2
+  healthcheck:
+    command: curl -m 5 -i localhost:3000/notifications/healthcheck|head -n1
+    perform: true
+    result: 200 OK
+  nginx_conf: api
+  path_name: notifications
+  service_name: service3
+  service_type: http
+  source:
+    branch_name: master
+    repo: git@github.com:Betterez/service3.git
+    type: git
+machine:
+  daemon_type: upstart
+  install:
+  - npm install
+  - npm install
+  start: npm start
+override:
+  production:
+    machine:
+      environment_variables:
+      - NODE_ENV=production
+      - location=aws
+  sandbox:
+    machine:
+      environment_variables:
+      - NODE_ENV=sandbox
+      - location=aws
+  staging:
+    machine:
+      daemon_type: systemd
+      image: node881ossec_16
+      start: /usr/bin/npm --prefix /home/bz-app/service3 start
+      environment_variables:
+      - NODE_ENV=staging
+      - location=aws

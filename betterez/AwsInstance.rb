@@ -1,0 +1,870 @@
+require_relative 'Helpers'
+require_relative 'Notifire'
+require_relative 'VaultDriver'
+require_relative 'Transaction'
+require_relative 'ServiceInstaller'
+require_relative 'OssecManager'
+require 'net/ssh'
+require 'net/scp'
+
+class AwsInstance
+  @@time_to_wait = 15
+  # setting hash
+  attr_accessor(:aws_setup_information)
+  attr_accessor(:notifire)
+  # amazon instance
+  attr_reader(:aws_instance_data)
+  # betterez repo
+  attr_reader(:repository)
+  attr_reader(:instance_type)
+  attr_reader(:build_number)
+  attr_accessor(:environment)
+  attr_reader(:path_name)
+  attr_reader(:ami_id)
+  attr_reader(:service_type)
+  attr_reader(:balancer_configuration)
+  attr_accessor(:host_port)
+  attr_reader(:name)
+  attr_reader(:immune)
+  # creates new object.
+  # * +instance+ instance from amazon.
+  # * +aws_setup_information+ hashed aws_setup_information.
+  def initialize(instance, aws_setup_information)
+    throw "can't create an instance without setup data" if aws_setup_information==nil
+    @aws_setup_information = aws_setup_information
+    @aws_instance_data = instance
+    # load tags here
+    instance.tags.each do |tag|
+      if tag.key == 'Repository'
+        @repository = tag.value
+      elsif tag.key == 'Build-Number'
+        @immune = true if tag.value == '000'
+        @build_number = tag.value.to_i
+      elsif tag.key == 'Environment'
+        @environment = tag.value
+      elsif tag.key == 'Path-Name'
+        @path_name = tag.value
+      elsif tag.key == 'Ami-id'
+        @ami_id = tag.value
+      elsif tag.key == 'Service-Type'
+        @service_type = tag.value
+      elsif tag.key == 'Nginx-Configuration'
+        @balancer_configuration = tag.value
+      elsif tag.key == 'Balancer-Configuration'
+        @balancer_configuration = tag.value
+      elsif tag.key == 'Port'
+        @host_port = tag.value.to_i
+      elsif tag.key == 'Name'
+        @name = tag.value
+      elsif tag.key == 'Immune'
+        @immune = true
+      end
+    end
+    @host_port = 3000 if @host_port.nil?
+    @ssh_timeout_period = 240_000
+    @build_number = 0 unless @build_number
+    @immune = false if @immune.nil?
+    @instance_type=instance.instance_type
+  end
+
+  def get_aws_id
+    @aws_instance_data.instance_id
+  end
+
+  ## returns the tag value by it's name
+  def get_tag_by_name name
+    @aws_instance_data.tags.each do|tag_data|
+      return tag_data.value if tag_data.key==name
+    end
+    nil
+  end
+
+  def self.time_to_wait
+    @@time_to_wait
+  end
+
+  def is_elb_instance?
+    @balancer_configuration != 'none' && @balancer_configuration != 'worker'
+  end
+
+  def is_nginx_instance?
+    false
+  end
+
+  def get_state_description
+    client = Helpers.create_aws_ec2_client
+    resp = client.describe_instances(dry_run: false,
+                                     instance_ids: [@aws_instance_data.instance_id])
+    resp.reservations[0].instances[0].state.name
+  end
+
+  # is this instance carrying repository that can be checked.
+  # returns +true+ if so.
+  def can_health_check?
+    return false if @service_type == 'worker'
+    true
+  end
+
+  def notify(message)
+    @notifire.notify(1, message) if !@notifire.nil? && @notifire
+  end
+
+  # waits for an instance to reach a state.
+  # *  +state+ - +string+. the state code
+  def wait_for_state(state)
+    current_state = 'unknown'
+    while current_state != state
+      sleep(10)
+      begin
+        current_state = get_state_description
+      rescue
+        current_state = 'unknown'
+      end
+    end
+  end
+
+  def generate_filters_hash
+    filters = {
+      'Path-Name' => @path_name,
+      'Environment' => @environment,
+      'Release' => 'yes',
+      'Elb-Type' => @balancer_configuration
+    }
+    filters
+  end
+
+  # +bollean+ checks if this instance ami is up to date
+  def is_ami_version_up_to_date(ami_type)
+    return false if @ami_id.nil?
+    current_ami = AwsInstance.get_ami_id(ami_type)
+    return true if @ami_id == current_ami
+    false
+  end
+
+  # +string+ returns the ip
+  def get_access_ip
+    if @aws_instance_data.public_ip_address
+      return @aws_instance_data.public_ip_address
+    end
+    @aws_instance_data.private_ip_address
+  end
+
+  def get_instance_private_ip_address
+    @aws_instance_data.private_ip_address
+  end
+
+  # checks if the instance service is healthy.
+  # return +boolean+ true if so , or false if not, and +string+ for the output.
+  def is_service_healthy?(service_setup_data)
+    output = ''
+    return true if service_setup_data['deployment']['healthcheck']['perform'] != true
+    begin
+      notify "healthcheck with #{service_setup_data['deployment']['healthcheck']['command']}"
+      output = run_ssh_command("cd /home/bz-app/#{@repository} && #{service_setup_data['deployment']['healthcheck']['command']}")
+      return true, output if output.include? service_setup_data['deployment']['healthcheck']['result']
+    rescue => details
+      notify(details)
+      return false, output
+    end
+    [false, output]
+  end
+
+  # restarts a service
+  def restart_service
+    ssh_command = "sudo service #{@repository} restart"
+    notify run_ssh_command ssh_command
+  end
+
+  # stops the machine service
+  def stop_service
+    ssh_command = "sudo service #{@repository} stop"
+    notify run_ssh_command ssh_command
+  end
+
+  # updates the instance repository code and restarts the service
+  # * +branch_name+ string. the branch to pull from.
+  def update_instance_code(service_setup_data)
+    service_setup_data[:install_type] = :existing_servers
+    stop_service
+    load_instance_code service_setup_data
+    restart_service
+  end
+
+  # update the instance OS, might not work for kernel updates.
+  def update_instace_os
+    ssh_command = 'sudo apt-get update &&sudo apt-get dist-upgrade -qq && sudo apt-get autoremove -y'
+    result = ''
+    Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
+      ssh.exec(ssh_command) do |_channel, _stream, data|
+        result += data
+      end
+    end
+    result
+  end
+
+  # returns the current node version of this server
+  def get_node_version
+    run_ssh_command('node --version')
+  end
+
+  # set up a new build number. create if does not exist
+  # * +build_number+ Integer. the build number to set.
+  def update_build_number(build_number)
+    result = ''
+    client = Helpers.create_aws_ec2_client
+    client.create_tags(dry_run: false,
+                       resources: [@aws_instance_data.instance_id],
+                       tags: [{ key: 'Build-Number', value: build_number }])
+    result += run_ssh_command("echo #{build_number} | sudo tee /home/bz-app/build_number.txt")
+    result += run_ssh_command("sudo service #{@repository} restart")
+    result
+  end
+
+  # run ssh command tried for +loops+ loops
+  def run_ssh_command(ssh_command, loops = 5, command_delay = 5)
+    result = ''
+    done = true
+    (0...loops).each do
+      begin
+        Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
+          result = ssh.exec!(ssh_command).to_s
+        end
+      rescue
+        done = false
+        sleep command_delay
+      end
+      break if done
+    end
+    result
+  end
+
+  def upload_data_to_file(data, remote_file_name)
+    Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
+      ssh.scp.upload!(StringIO.new(data), remote_file_name)
+    end
+  end
+
+  def upload_file_to_host(local_file_name, remote_file_name)
+    Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
+      ssh.scp.upload!(local_file_name, remote_file_name)
+    end
+  end
+
+  # Terminate current instance
+  def terminate_instance
+    client = Helpers.create_aws_ec2_client
+    client.terminate_instances(dry_run: false,
+                               instance_ids: [@aws_instance_data.instance_id])
+  end
+
+  # checks if this is a betterez-app server.
+  def is_app_instance?
+    if @service_type == 'http' && @path_name == '/' && @balancer_configuration == 'app'
+      return true
+    end
+    false
+  end
+
+  # gets an instance from it's name, or nil if we can't get it.
+  # * +instance_name+ string the instance name.
+  def self.get_from_name(instance_name, aws_setup_information)
+    client = Helpers.create_aws_ec2_client
+    resp = client.describe_instances(dry_run: false,
+                                     filters: [
+                                       {
+                                         name: 'tag:Name',
+                                         values: [instance_name]
+                                       }
+                                     ])
+    resp.reservations.each do |reservation|
+      reservation.instances.each do |instance|
+        return AwsInstance.new(instance, aws_setup_information)
+      end
+    end
+    nil
+  end
+
+  ## create aws instances.
+  # * +service_setup_data+ - service specific data
+  # * +aws_setup_information+ - environment and keys data
+  def self.create_aws_instances(service_setup_data, aws_setup_information, notifire)
+    aws_instances = []
+    instance_threads = []
+    instances_data = []
+    notifire.notify(1, 'getting ami id')
+    total_servers_number = if service_setup_data[:debug]
+                             1
+                           else
+                             3
+                           end
+    puts "server :#{service_setup_data['machine']['servers_count']}"
+    ami_id = AwsInstance.get_ami_id(service_setup_data['machine']['image'])
+    unless ami_id
+      notifire.notify(1, "sorry! there is no ami id for type #{service_setup_data['machine']['image']}! Are you missing a packer run?")
+      return []
+    end
+    total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
+    current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
+    puts "total_servers_number=#{total_servers_number}"
+    if service_setup_data[:servers_count]
+      current_server_index = 0
+      current_infra_index = 0
+      while current_server_index < total_servers_number
+        if current_infra_index + 1 > current_environment_data[:infraStructure].length
+          current_infra_index = 0
+        end
+        instances_data << { infra_data: current_environment_data[:infraStructure][current_infra_index], ami_id: ami_id }
+        current_infra_index += 1
+        current_server_index += 1
+      end
+    else
+      current_environment_data[:infraStructure].each do |infra_data|
+        instances_data << { infra_data: infra_data, ami_id: ami_id }
+      end
+    end
+    transaction = Transaction.new service_setup_data[:servers_count]
+    limiter = Random.new
+    instances_data.each do |instance_data|
+      sleep ( 0.1 + limiter.rand(2000) / 100)
+      instance_threads << Thread.new do
+        aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction)
+        aws_instances << aws_instance unless aws_instance.nil?
+      end
+    end
+    instance_threads.each(&:join)
+    if (aws_instances.length < service_setup_data[:servers_count])
+      if (service_setup_data[:debug])
+          notifire.notify 1, 'keeping failed servers, debug'
+      else
+        notifire.notify 1, 'created servers are below require number, terminating.'
+        aws_instances.each(&:terminate_instance)
+      end
+      aws_instances = []
+    end
+    if aws_instances.length > service_setup_data[:servers_count]
+      notifire.notify 1, 'terminating servers under number'
+      termination_candidates = aws_instances.length - service_setup_data[:servers_count]
+      (0...termination_candidates).each do
+        aws_instances[0].terminate_instance
+      end
+      aws_instances.slice!(0, termination_candidates)
+    end
+    # remove cloudwatch cache.
+    # set ossec
+    aws_instances.each do |instance|
+      instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
+      instance.update_ossec_settings
+    end
+    notifire.notify 1, 'done'
+    aws_instances
+  end
+
+  ## checks if this instance has ossec agent on it
+  # returns +true+ if so, or +false+ if not
+  def is_instance_ossec_agent?
+    listing = run_ssh_command 'sudo ls /var/ossec/etc'
+    if listing.index('cannot access').nil?
+      return true
+    else
+      notify 'seems to be not an ossec instance:'
+      notify listing
+      return false
+    end
+  end
+
+  def update_init_file_and_restart(service_setup_data)
+    throw "nil aws_setup_information" if @aws_setup_information==nil
+    #puts "\n\n\nservice_setup_data=#{service_setup_data}\n\n\n"
+    #puts "\n\n\naws_setup_information=#{@aws_setup_information}\n\n\n"
+    service_installer = ServiceInstaller.new(service_setup_data, @aws_setup_information[service_setup_data[:environment].to_sym])
+    service_installer.install_service(self)
+    # remote_file_name = "/home/ubuntu/#{@repository}.conf"
+    # init_file_data = AwsInstance.generate_init_file(service_setup_data, @aws_setup_information, @environment.to_sym)
+    # upload_data_to_file(init_file_data[0][:script], remote_file_name)
+    # ssh_command = "sudo mv #{remote_file_name} /etc/init/#{@repository}.conf && sudo service #{@repository} restart"
+    # run_ssh_command ssh_command
+  end
+
+  def load_instance_code(service_setup_data)
+    service_name = service_setup_data['deployment']['service_name']
+    temp_folder = 'temp/'
+    Dir.mkdir temp_folder unless Dir.exist?(temp_folder)
+    existing_servers = ((service_setup_data.key? :install_type) && (service_setup_data[:install_type] == :existing_servers))
+    if existing_servers
+      notify 'updating existing servers'
+    else
+      notify 'updating new servers' unless existing_servers
+    end
+    case service_setup_data['deployment']['source']['type']
+    when 'nop'
+      notify 'no code to load'
+    when 'git'
+      branch_name = service_setup_data['deployment']['source']['branch_name']
+      git_repo = service_setup_data['deployment']['source']['repo']
+      notify "git: loading from #{git_repo} on branch #{branch_name} .."
+      if existing_servers
+        ssh_command = "cd /home/bz-app/#{service_name} "+
+        "&& sudo -H -u bz-app bash -c 'git stash'"+
+        "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"+
+        " && sudo -H -u bz-app bash -c 'git pull origin #{branch_name}'"
+      else
+        ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo}'"
+        run_ssh_command ssh_command
+        unless branch_name == 'master'
+          notify "switching to #{branch_name}"
+          ssh_command = "cd /home/bz-app/#{git_repo} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
+          run_ssh_command ssh_command
+        end
+      end
+      if existing_servers
+        notify "updating existing servers code base (#{ssh_command})"
+        notify run_ssh_command ssh_command
+      end
+      notify 'done'
+      unless existing_servers
+        ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
+        run_ssh_command ssh_command
+      end
+    when 's3'
+      notify 'loading from s3'
+      filename = service_setup_data['deployment']['source']['bucket']
+      # puts "loading #{filename}"
+      filename += '.tar.gz' if filename.index('tar.gz').nil?
+      notify 'creating s3 client'
+      s3 = Aws::S3::Client.new(region: 'us-east-1', credentials: Helpers.create_aws_authentication_token)
+      resp = s3.list_objects(bucket: service_setup_data['deployment']['source']['bucket'],
+                             delimiter: 'Delimiter',
+                             encoding_type: 'url')
+      notify 'loading objects'
+      selected_object = nil
+      resp.contents.each do |s3_object|
+        if s3_object.key.index('_20')
+          selected_object = s3_object if selected_object.nil?
+          selected_object = s3_object if selected_object.key < s3_object.key
+        end
+      end
+      throw 'No s3 object found!' if selected_object.nil?
+      notify "#{selected_object.key} was selected, pulling to local temp storage... "
+      notify "local file name #{temp_folder + filename}"
+      File.open(temp_folder + filename, 'wb') do |file|
+        s3.get_object(bucket: service_setup_data['deployment']['source']['bucket'], key: selected_object.key) do |chunk|
+          file.write(chunk)
+        end
+      end
+      notify 'uploading s3 to destination'
+      upload_file_to_host(temp_folder + filename, '/home/ubuntu/')
+      notify 'done, showing file listings:'
+      notify run_ssh_command('ls -shla')
+      notify 'extracting...'
+      notify run_ssh_command("tar -xzf #{filename}")
+      notify run_ssh_command("sudo mkdir -p /home/bz-app/#{service_name} && sudo chown -R bz-app:bz-app /home/bz-app/")
+      notify run_ssh_command("sudo mv /home/ubuntu/#{service_name} /home/bz-app/#{service_name} && sudo chown bz-app /home/bz-app/#{service_name}")
+      run_ssh_command("echo #{service_setup_data[:build_number]} | sudo tee /home/bz-app/build_number.txt")
+    end
+    sleep 5
+    if !service_setup_data['machine']['install'].nil? && !service_setup_data['machine']['install'].empty?
+      notify 'installing....'
+      service_setup_data['machine']['install'].each do |command|
+        next if command == ''
+        notify "running #{command}"
+        ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
+        log_output = run_ssh_command ssh_command
+        Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
+        logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
+        logger.write(log_output)
+      end
+    else
+      notify 'nothing to install...'
+    end
+    notify 'service code loaded.'
+  end
+
+  ## Creates a single service instance
+  # * +service_setup_data+ - service secific data
+  # * +aws_setup_information+ - environment data and other
+  # * +instance_setup_data+ - instance data and other
+  # * +notifire+ - notifire interface
+  # * +transaction+ - instance thread transactio data
+  def self.create_service_instance(service_setup_data, aws_setup_information, notifire, instance_setup_data, transaction)
+    client = Helpers.create_aws_ec2_client
+    failed_attempts = 0
+    current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
+    server_name = "#{service_setup_data['deployment']['service_name']}_#{Helpers.create_time_date_string}_#{Helpers.create_random_string(6)}"
+    notifire.notify 1, "creating server #{server_name} with #{instance_setup_data[:ami_id]}"
+    selected_instance_type = service_setup_data['machine']['instance_type']
+    selected_instance_type = current_environment_data[:instanceType] if selected_instance_type.nil?
+
+    resp = client.run_instances(dry_run: false,
+                                image_id: instance_setup_data[:ami_id],
+                                min_count: 1,
+                                max_count: 1,
+                                key_name: current_environment_data[:keyName],
+                                security_group_ids: [instance_setup_data[:infra_data][:securityGroup]],
+                                instance_type: selected_instance_type,
+                                placement: {
+                                  availability_zone:  instance_setup_data[:infra_data][:availabilityZone],
+                                  tenancy: 'default'
+                                },
+                                monitoring: {
+                                  enabled: true, # required
+                                },
+                                subnet_id: instance_setup_data[:infra_data][:subnet],
+                                disable_api_termination: false)
+    instance_data = resp.instances[0]
+    aws_instance = AwsInstance.new(instance_data, aws_setup_information)
+    notifire.notify 1, "#{Thread.current.object_id} waiting for it to run"
+    aws_instance.wait_for_state('running')
+    # registers iam for cloud watch.
+    client.associate_iam_instance_profile({
+      iam_instance_profile: { # required
+        arn: Helpers.get_cloud_ern,
+        name: "CloudWatcher",
+      },
+      instance_id: aws_instance.get_aws_id, # required
+    })
+    notifire.notify 1, 'creating tags'
+    service_setup_data['deployment']['path_name'] = '' if service_setup_data['deployment']['path_name'].nil?
+    client.create_tags(dry_run: false,
+                       resources: [instance_data.instance_id],
+                       tags: [
+                         { key: 'Ami-id', value: instance_setup_data[:ami_id] },
+                         { key: 'Build-Number', value: '000' },
+                         { key: 'Environment', value: service_setup_data[:environment] },
+                         { key: 'Name', value: server_name },
+                         { key: 'Nginx-Configuration', value: service_setup_data['deployment']['nginx_conf'] },
+                         { key: 'Path-Name', value: service_setup_data['deployment']['path_name'] },
+                         { key: 'Repository', value: service_setup_data['deployment']['service_name'] },
+                         { key: 'Service-Type', value: service_setup_data['deployment']['service_type'] }
+                       ])
+    notifire.notify 1, "#{Thread.current.object_id} reloading instance"
+    resp = client.describe_instances(dry_run: false,
+                                     instance_ids: [instance_data.instance_id])
+    instance_data = resp.reservations[0].instances[0]
+    aws_instance = AwsInstance.new(instance_data, aws_setup_information)
+    aws_instance.notifire = notifire
+    failed_attempts = 0
+    maximum_attempts = 14
+    while failed_attempts < maximum_attempts
+      begin
+        aws_instance.run_ssh_command('ls')
+        notifire.notify 1, "connected to server #{aws_instance.get_access_ip}"
+        failed_attempts = 0
+        break
+      rescue
+        notifire.notify 1, "connection to server #{aws_instance.get_access_ip} failed, retrying, #{failed_attempts + 1} of #{maximum_attempts} maximum attempts "
+        sleep(10)
+        failed_attempts += 1
+      end
+    end
+    if failed_attempts > 0
+      if (service_setup_data[:debug])
+          notifire.notify 1, 'keeping failed servers, debug'
+      else
+        notifire.notify(1, 'terminating instance due to failure')
+        aws_instance.terminate_instance
+      end
+      return nil
+    end
+    begin
+      # load service code
+      aws_instance.load_instance_code(service_setup_data)
+      # upload service file
+      service_installer = ServiceInstaller.new service_setup_data, current_environment_data
+      service_installer.install_service aws_instance
+      if transaction.reached_goal?
+        aws_instance.terminate_instance
+        return nil
+      end
+      # File.open("service_install#{Thread.current.object_id}.log", 'w') { |file| file.write(install_data) }
+      sleep 8
+      notifire.notify(1, 'restarting service')
+      aws_instance.restart_service
+      if transaction.reached_goal?
+        aws_instance.terminate_instance
+        return nil
+      end
+      sleep 12
+      if aws_instance.can_health_check?
+        if transaction.reached_goal?
+          aws_instance.terminate_instance
+          return nil
+        end
+        failed_attempts = 0
+        while failed_attempts < maximum_attempts
+          if transaction.reached_goal?
+            aws_instance.terminate_instance
+            return nil
+          end
+          notifire.notify(1, "checking service health, #{failed_attempts + 1} of #{maximum_attempts}")
+          results = aws_instance.is_service_healthy?(service_setup_data)
+          if results[0]
+            notifire.notify(1, 'service is healthy!')
+            failed_attempts = 0
+            break
+          else
+            if failed_attempts == 2
+              aws_instance.restart_service
+              sleep 20
+            end
+            notifire.notify(1, "#{Thread.current.object_id} - service is not healthy, retrying")
+            notifire.notify(1, "#{Thread.current.object_id} - #{results[1]}")
+            sleep 6
+            failed_attempts += 1
+          end
+        end
+        if failed_attempts > 0
+          if (service_setup_data[:debug])
+            notifire.notify(1, "keeping after failed.")
+          else
+            aws_instance.terminate_instance
+          end
+          return nil
+        end
+      else
+        notifire.notify(1, "instance doesn't have health check configurations.")
+      end
+      notifire.notify(1, 'updating build number')
+      aws_instance.update_build_number(service_setup_data[:build_number])
+      aws_instance.update_tag_value 'Online', 'yes'
+    rescue => details
+      if (service_setup_data[:debug])
+        notifire.notify 1, "not terminating after an error, debug mode"
+      else
+        notifire.notify 1, "error #{details}\r\nTerminating instance."
+        aws_instance.terminate_instance
+      end
+      return nil
+    end
+    notifire.notify(1, 'instance created!')
+    transaction.increase!
+    notifire.notify(1, 'leaving aws creator')
+    aws_instance
+  end
+
+  def update_tag_value(tag_name, tag_value)
+    client = Helpers.create_aws_ec2_client
+    client.create_tags(dry_run: false,
+                       resources: [@aws_instance_data.instance_id], # required
+                       tags: [ # required
+                         {
+                           key: tag_name,
+                           value: tag_value
+                         }
+                       ])
+  end
+
+  # In case of an ossec agent installed, setup the correct manger and files.
+  def update_ossec_settings
+    if is_instance_ossec_agent?
+      notify "ossec instance, settings agent for #{@environment}..."
+      begin
+        ossec_manager = OssecManager.new @environment
+      rescue
+        notify "can't initialize ossec server for this environment."
+        # return
+      end
+      ossec_manager.notifire = @notifire
+      result, install_data = ossec_manager.register_new_agent_with_instance(self)
+      if result
+        notify "ossec agent installed and running #{install_data}"
+      else
+        notify "failed to install ossec agent: #{install_data}"
+      end
+    else
+      notify 'this is not an ossec instance. exiting'
+      nil
+    end
+  end
+
+  # Craete aws instances.
+  def self.create_aws_instance(service_setup_data, aws_setup_information, _notifire = nil)
+    env_settings = aws_setup_information[service_setup_data[:environment]]
+    client = Helpers.create_aws_ec2_client
+    index = 0
+    index = service_setup_data[:infra_index] if service_setup_data[:infra_index]
+    _notifire.notify(1, 'getting ami') if _notifire
+    ami_id = AwsInstance.get_ami_id(service_setup_data[:ami_type])
+    _notifire.notify(1, "ami: #{ami_id}") if _notifire
+    throw 'no image id' unless ami_id
+    selected_instance_type = service_setup_data['machine']['instance_type']
+    selected_instance_type = env_settings[:instanceType] if selected_instance_type.nil?
+
+    resp = client.run_instances(dry_run: false,
+                                image_id: ami_id,
+                                min_count: 1,
+                                max_count: 1,
+                                key_name: env_settings[:keyName],
+                                security_group_ids: [env_settings[:infraStructure][index][:securityGroup]],
+                                instance_type: selected_instance_type,
+                                placement: {
+                                  availability_zone: env_settings[:infraStructure][index][:availabilityZone],
+                                  tenancy: 'default'
+                                },
+                                monitoring: {
+                                  enabled: true, # required
+                                },
+                                subnet_id: env_settings[:infraStructure][index][:subnet],
+                                disable_api_termination: false)
+    instance_data = resp.instances[0]
+    aws_instance = AwsInstance.new(instance_data, aws_setup_information)
+    sleep 10
+    aws_instance.wait_for_state('running')
+    _notifire.notify(1, 'instance created, creating tags') if _notifire
+    client.create_tags(dry_run: false,
+                       resources: [instance_data.instance_id],
+                       tags: [
+                         { key: 'Build-Number', value: service_setup_data[:build_number] },
+                         { key: 'Environment', value: service_setup_data[:environment] },
+                         { key: 'Name', value: service_setup_data[:server_name] },
+                         { key: 'Nginx-Configuration', value: service_setup_data[:nginx_conf] },
+                         { key: 'Path-Name', value: service_setup_data[:path_name] },
+                         { key: 'Repository', value: service_setup_data[:repo] },
+                         { key: 'Service-Type', value: service_setup_data[:service_type] },
+                         { key: 'Online', value: 'no' }
+                       ])
+    _notifire.notify(1, 'done creating tags') if _notifire
+    resp = client.describe_instances(dry_run: false,
+                                     instance_ids: [instance_data.instance_id])
+    instance_data = resp.reservations[0].instances[0]
+    aws_instance = AwsInstance.new(instance_data, aws_setup_information)
+    sleep 15
+    _notifire.notify(1, 'accessing...') if _notifire
+    output = aws_instance.run_ssh_command('ls')
+    _notifire.notify(1, "output #{output}") if _notifire
+    aws_instance
+  end
+
+  def self.generate_init_file(service_setup_data, aws_environment_data, current_environment)
+    files_data = []
+    current_environment = current_environment.to_sym if current_environment.class == String
+    current_environment_data = aws_environment_data[current_environment]
+    file_data = { script: '', location: '' }
+    vault_data = ''
+    run_command = service_setup_data['machine']['start']
+    case service_setup_data['machine']['daemon_type']
+    when 'upstart'
+      file_data[:script] = "
+        ######### generate at #{Helpers.create_time_date_string} ##########
+        start on runlevel [2345]
+        stop on runlevel [!2345]
+        script
+        chdir /home/bz-app/[repo]/
+        exec sudo -H -u bz-app bash -c '[vault_data] [environment_variables] BUILD_NUMBER=$(cat /home/bz-app/build_number.txt) #{run_command}'
+        end script
+        respawn
+        ######################
+        "
+      file_data[:location] = "/etc/init/#{service_setup_data['deployment']['service_name']}.conf"
+      files_data.push file_data
+    when 'systemd'
+      file_data[:script] = "
+      [Unit]
+      Description=simple node hello web server
+
+      [Service]
+      Environment=[vault_data] [environment_variables] BUILD_NUMBER=$(cat /home/bz-app/build_number.txt)
+      WorkingDirectory=/home/bz-app/[repo]/
+      ExecStart=[runner_path] /home/tal/node_server
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+      "
+      file_data[:location] = "/etc/systemd/system/service_setup_data#{['deployment']['service_name']}.service"
+    end
+    files_data.each do |current_file_data|
+      current_file_data[:script].gsub!('[repo]', service_setup_data['deployment']['service_name'])
+    end
+    environment_variables = ''
+    if service_setup_data['machine'].key?('environment_variables')
+      service_setup_data['machine']['environment_variables'].each do |environment_variable|
+        environment_variables += "#{environment_variable} "
+      end
+    end
+    files_data.each do |current_file_data|
+      current_file_data[:script].gsub!('[environment_variables]', environment_variables)
+    end
+
+    if current_environment_data.key? :vault
+      driver = VaultDriver.from_secrets_file current_environment.to_s
+      if current_environment_data.key?(:secrets)
+        puts 'vault unlocked' if driver.unlock_vault(current_environment_data[:secrets][:vault][:keys]) == 200
+      else
+        puts 'no vault secrets file.'
+      end
+      driver.get_vault_status
+      if driver.online && !driver.locked
+        vault_data = driver.get_system_variables_for_service(service_setup_data['deployment']['service_name'])
+      end
+    end
+    files_data.each do |current_file_data|
+      current_file_data[:script].gsub!('[vault_data]', vault_data)
+    end
+  end
+
+  # gets all the instances that followes the tags in +params+.
+  # * +filters+ Array of hashes. tags are listed like this: { name: 'tag:Environment', values: ["some value"] },
+  # * +aws_setup_information+ Array of hashes. This is the aws info usually found in settings/aws-data.json
+  # +returns+ an array of AwsInstance. empty array if none found.
+  def self.get_instances_with_filters(filters, aws_setup_information,zone=nil)
+    throw "can't filter instances with nil for aws info" if aws_setup_information==nil
+    all_instances = []
+    client = Helpers.create_aws_ec2_client(zone)
+    resp = if !filters.nil?
+             client.describe_instances(dry_run: false,
+                                       filters: filters)
+           else
+             client.describe_instances(dry_run: false)
+           end
+    resp.reservations.each do |reservation|
+      reservation.instances.each do |instance|
+        all_instances.push(AwsInstance.new(instance, aws_setup_information))
+      end
+    end
+    all_instances
+  end
+
+  def self.get_instances_with_id(instance_id, aws_setup_information)
+    instance_id = [instance_id] if instance_id.is_a? String
+    client = Helpers.create_aws_ec2_client
+    resp = client.describe_instances(dry_run: false,
+                                     instance_ids: instance_id)
+    resp.reservations.each do |reservation|
+      reservation.instances.each do |instance|
+        return AwsInstance.new(instance, aws_setup_information)
+      end
+    end
+  end
+
+  def to_s
+    "#{@aws_instance_data.instance_id}(#{@name})-#{@environment}
+      \tcode repo:#{@repository}
+      \tservice type:#{@service_type}
+      \tnginx:#{@balancer_configuration}
+      \tbuild number:#{@build_number}"
+  end
+
+  # returns last ami image from amazon.
+  def self.get_ami_id(image_type)
+    client = Helpers.create_aws_ec2_client
+    images = []
+    resp = client.describe_images(dry_run: false,
+                                  filters: [
+                                    {
+                                      name: 'tag:Type', values: [image_type]
+                                    },
+                                    {
+                                      name: 'state', values: ['available']
+                                    }
+                                  ])
+    return nil if resp.images.length.zero?
+    resp.images.each do |image|
+      images.push(image)
+    end
+    images.sort! { |a, b| a.creation_date <=> b.creation_date }
+    images[images.length - 1].image_id
+  end
+
+  alias remove_instance terminate_instance
+  alias delete_instance terminate_instance
+end

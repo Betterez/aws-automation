@@ -1,0 +1,13 @@
+settings/
+checks/
+doc/
+temp/
+dumps/
+reports/
+code_tests.rb
+logs/
+*.log
+output/
+transient/
+trans_tests/
+*.tar.gz

@@ -1,0 +1,10 @@
+{
+	"image":"talreg/angular",
+	"name":"angular1",
+	"type":"http",
+	"uri_path":"movies_test",
+	"container_port": 3000,
+	"cpu": 128,
+    "memory": 64,
+    "instances":1
+}
