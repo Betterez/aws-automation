@@ -1,6 +1,6 @@
 require 'aws-sdk'
 require 'json'
-## Helper module for betterez
+# Helper module for betterez
 module Helpers
   @@environment_values = nil
   # create an elb client
@@ -11,28 +11,34 @@ module Helpers
     elasticloadbalancing
   end
 
-  ## create an ec2 client, load aws creds from settings file
+  # create an ec2 client, load aws creds from settings file
   def self.create_aws_ec2_client(zone = 'us-east-1')
     zone = 'us-east-1' if zone.nil?
     Aws.config[:ssl_ca_bundle] = 'cacert.pem'
     Aws::EC2::Client.new(region: zone, credentials: Helpers.create_aws_authentication_token)
   end
 
-  ## create a route53 object, load aws creds from settings file
+  # create a route53 object, load aws creds from settings file
   def self.create_aws_route53_client(creation_region = 'us-east-1')
     creation_region = 'us-east-1' if creation_region.nil?
     Aws.config[:ssl_ca_bundle] = 'cacert.pem'
     Aws::Route53::Client.new(region: creation_region, credentials: Helpers.create_aws_authentication_token)
   end
 
-  ## Creates a S3 client, load aws creds from settings file
+  # Creates a S3 client, load aws creds from settings file
   def self.create_aws_S3_client(creation_region = 'us-east-1')
     creation_region = 'us-east-1' if creation_region.nil?
     Aws.config[:ssl_ca_bundle] = 'cacert.pem'
     Aws::S3::Client.new(region: creation_region, credentials: Helpers.create_aws_authentication_token)
   end
+  # Creates a iam client, load aws creds from settings file
+  def self.create_aws_iam_client(creation_region = 'us-east-1')
+    creation_region = 'us-east-1' if creation_region.nil?
+    Aws.config[:ssl_ca_bundle] = 'cacert.pem'
+    Aws::IAM::Client.new(region: creation_region, credentials: Helpers.create_aws_authentication_token)
+  end
 
-  ## creates aws authentication info
+  # creates aws authentication info
   def self.create_aws_authentication_token
     # authData = loadJSONData('settings/authentication.json')
     auth_file_name = 'settings/aws-auth.json'
@@ -79,7 +85,7 @@ module Helpers
     true
   end
 
-  ###  loads json data from a file
+  ##  loads json data from a file
   # * filename - the json file. `.json` is required.
   def self.loadJSONData(filename)
     return nil unless File.readable?(filename)
@@ -93,13 +99,13 @@ module Helpers
     fileData
   end
 
-  ## outputs a message to the screen formatted with time.
+  # outputs a message to the screen formatted with time.
   # * line - the message
   def self.log(line)
     puts("#{Time.new} - #{line}")
   end
 
-  ## create a random text string with size length.
+  # create a random text string with size length.
   # * size - the required size for the string
   def self.create_random_string(size)
     random_string = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
@@ -112,7 +118,7 @@ module Helpers
     value
   end
 
-  ## gets an instance id from the instance name
+  # gets an instance id from the instance name
   # * +instance_name+ - string, the instance name to get the id for
   def self.get_instances_data_for_name(instance_name)
     instances = []
