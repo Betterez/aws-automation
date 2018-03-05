@@ -13,8 +13,9 @@ class SecurityChecker
     service_keys = []
     [{ name: :aws, key: 'AWS_SERVICE_KEY' }, { name: :mongo, key: 'MONGO_DB_USERNAME' }].each do |key_data|
       key_index=service_params.index(key_data[:key])
-      if !key_index.nil
-        key_value=get_key_value_for_param(:key,service_params)
+      if !key_index.nil?
+        key_value=get_key_value_for_param(key_data[:key],service_params)
+        throw "no value for this key #{:key}" if key_value.nil?
         service_keys.push({key_name: key_data[:name],key_value: key_value})
       end
     end
