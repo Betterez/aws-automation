@@ -1,10 +1,13 @@
 require 'aws-sdk'
 require_relative 'Helpers'
 class SecurityChecker
+  attr_reader(:all_users)
+  attr_reader(:all_users_keys)
+  attr_reader(:keys_data_index)
   def initialize
+    @keys_data_index = nil
     @all_users = nil
     @all_users_keys = nil
-    @keys_data_index = nil
   end
 
   ## checks if parameters contains any known services keys. currently supported mongo and aws
@@ -81,9 +84,17 @@ class SecurityChecker
         end
       end
     end
+    @keys_data_index
   end
 
+  ## check_key_validity - checks if this key is valid from a security point of view
+  # key_info - +hash+ include key_name (:aws, :mongo) and key_value +string+
+  def check_key_validity(key_info)
+    if(key_info[:key_name]==:aws) then
+      throw "can't find this key " if @keys_data_index[:key_value].nil?
 
+    end
+  end
 
   ## for username / password pair, check to see if they are valid.
   # mongo_params - +hashmap+ {:username,:password}

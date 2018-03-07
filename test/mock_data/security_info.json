@@ -1,0 +1,22 @@
+{
+  "users":["consol.user","api.user"],
+  "keys_by_user":{
+    "consol.user":[{"key_id":"AKIA11111111111111111111","usage":null,"status":"Active","created_date":"2017-11-15 16:27:02 UTC","username":"consol.user"}],
+    "api.user":[{"key_id":"AKIA222222222222222222","usage":"2017-08-23 13:14:00 UTC","status":"Active","created_date":"2015-03-07 17:44:17 UTC","username":"api.user"},
+      {"key_id":"AKIA3333333333333333","usage":"2018-03-07 01:13:00 UTC","status":"Active","created_date":"2014-12-29 00:54:59 UTC","username":"api.user"}]
+    },
+
+  "keys_by_key_value":{
+    "AKIA11111111111111111111":{
+      "key_id":"AKIA11111111111111111111","usage":null,"status":"Active","created_date":"2017-11-15 16:27:02 UTC",
+      "username":"consol.user"
+      },
+    "AKIA222222222222222222":{
+      "key_id":"AKIA222222222222222222","usage":"2017-08-23 13:14:00 UTC","status":"Active","created_date":"2015-03-07 17:44:17 UTC",
+      "username":"api.user"
+      },
+    "AKIA3333333333333333":{
+      "key_id":"AKIA3333333333333333","usage":"2018-03-07 01:13:00 UTC","status":"Active","created_date":"2014-12-29 00:54:59 UTC",
+      "username":"api.user"}
+    }
+}
