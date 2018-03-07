@@ -7,14 +7,20 @@ class SecurityCheckerMock < SecurityChecker
     @all_users=data[:users]
     @all_users_keys=data[:keys_by_user]
     @keys_data_index=data[:keys_by_key_value]
-    # 
-    # @all_users_keys.keys.each do |username|
-    #   @all_users_keys[username].each do |user_entry|
-    #     if !user_entry[:usage].nil? then
-    #       user_entry[:usage]
-    #     end
-    #   end
-    # end
+
+    @all_users_keys.keys.each do |username|
+      @all_users_keys[username].each do |user_entry|
+        if !user_entry[:usage].nil? then
+          user_entry[:usage]=Date.parse(user_entry[:usage])
+        end
+      end
+    end
+
+    @keys_data_index.keys.each do |key_name|
+      next if @keys_data_index[key_name][:usage].nil?
+      @keys_data_index[key_name][:usage]=Date.parse(@keys_data_index[key_name][:usage])
+    end
+
   end
 
   def load_mock_data

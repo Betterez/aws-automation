@@ -91,8 +91,12 @@ class SecurityChecker
   # key_info - +hash+ include key_name (:aws, :mongo) and key_value +string+
   def check_key_validity(key_info)
     if(key_info[:key_name]==:aws) then
-      throw "can't find this key " if @keys_data_index[:key_value].nil?
-
+      return "invalid","can't find this key" if @keys_data_index[key_info[:key_value].to_sym].nil?
+      if Date.new-90> @keys_data_index[key_info[:key_value].to_sym].usage
+        return "invalid",nil
+      else
+        return "valid",nil
+      end
     end
   end
 

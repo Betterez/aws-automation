@@ -6,19 +6,33 @@ require "test/unit"
 class SecurityCheckerTest <Test::Unit::TestCase
   def setup
     @checker=SecurityChecker.new
-    @checker2=SecurityCheckerMock.new
-    @checker2.get_all_aws_keys
+    @mock_checker=SecurityCheckerMock.new
+    @mock_checker.get_all_aws_keys
   end
 
   def test_mock_data
-    data=@checker2.load_mock_data
+    data=@mock_checker.load_mock_data
     assert(!data[:users].nil?)
     assert(data[:users]==["consol.user","api.user"],"bad data loaded, #{data[:users]}")
   end
 
-  def test_checker2
-    assert(@checker2.all_users==["consol.user","api.user"],"@checker2.all_users=#{@checker2.all_users}")
-    assert(@checker2.all_users!=["console.user","api.user"],"@checker2.all_users=#{@checker2.all_users}")
+  def test_mock_checker
+    assert(@mock_checker.all_users==["consol.user","api.user"],"@mock_checker.all_users=#{@mock_checker.all_users}")
+    assert(@mock_checker.all_users!=["console.user","api.user"],"@mock_checker.all_users=#{@mock_checker.all_users}")
+    assert(@mock_checker.all_users_keys[:"api.user"].class==Array)
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage].class==Date,"class usage is #{@mock_checker.all_users_keys[:"api.user"][0][:usage].class}, not Date.")
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage]>Date.new(2017,8,22))
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage]<Date.new(2017,8,24))
+
+    assert(@mock_checker.keys_data_index[:AKIA11111111111111111111][:usage].class==NilClass,"class usage is #{@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class}, not NilClass.")
+    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class==Date,"class usage is #{@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class}, not Date.")
+    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]>Date.new(2016,12,12))
+    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]<Date.new(2018,12,12))
+  end
+
+  def test_key_validity
+    result,err=@mock_checker.check_key_validity({key_name: :aws, key_value: AKIA222222222222222222})
+    assert(result=="valid","results should be valid, got #{result}")
   end
 
   def test_param_extract
