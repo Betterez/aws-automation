@@ -119,6 +119,7 @@ class SecurityChecker
     end
     # iam_client=Helpers.create_aws_iam_client
     # iam_client.
+    return true
   end
 
   ## creates a key info has from a user info one
