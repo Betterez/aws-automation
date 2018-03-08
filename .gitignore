@@ -11,3 +11,4 @@ output/
 transient/
 trans_tests/
 *.tar.gz
+tokens/

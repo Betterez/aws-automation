@@ -4,10 +4,15 @@ class SecurityChecker
   attr_reader(:all_users)
   attr_reader(:all_users_keys)
   attr_reader(:keys_data_index)
+  attr_accessor(:days_to_validate)
+  attr_accessor(:days_to_clear_deletion)
   def initialize
     @keys_data_index = nil
     @all_users = nil
     @all_users_keys = nil
+    # number of days after which key will consider not secure
+    @days_to_validate=90
+    @days_to_clear_deletion=10
   end
 
   ## checks if parameters contains any known services keys. currently supported mongo and aws
@@ -89,16 +94,44 @@ class SecurityChecker
 
   ## check_key_validity - checks if this key is valid from a security point of view
   # key_info - +hash+ include key_name (:aws, :mongo) and key_value +string+
+  # returns: valid or invalid and an error string if one happend. else the error string will be nil
   def check_key_validity(key_info)
     if(key_info[:key_name]==:aws) then
       return "invalid","can't find this key" if @keys_data_index[key_info[:key_value].to_sym].nil?
-      if Date.new-90> @keys_data_index[key_info[:key_value].to_sym].usage
+      if ((DateTime.now-@days_to_validate) > (@keys_data_index[key_info[:key_value].to_sym][:created_date]))
         return "invalid",nil
       else
         return "valid",nil
       end
     end
   end
+
+  ## update_user_iam_keys - removes an old iam key and creates a new one
+  # user_info - +hash+ containg keys array {"username":[key_id:,usage:,status:,created_date:,username:],}
+  def update_user_iam_keys(user_info)
+    # if (user_info[user_info.keys[0]].length==2)
+    #
+    # iam_client=Helpers.create_aws_iam_client
+    # iam_client.
+  end
+
+  ## creates a key info has from a user info one
+  def create_key_info_from_user_info(user_info)
+
+  end
+  ## aws_key_be_deleted - checks if this key is eligible  from a security point of view
+  # key_info - +hash+ include key_name (:aws, :mongo) and key_value +string+
+  # returns: valid or invalid and an error string if one happend. else the error string will be nil
+  def aws_key_can_be_deleted(key_info)
+    result,err=check_key_validity(key_info)
+    return false if err!=nil
+    return false if @keys_data_index[key_info[:key_value].to_sym][:usage]==nil
+    if ((DateTime.now-@days_to_clear_deletion) > (@keys_data_index[key_info[:key_value].to_sym][:usage]))
+      return true
+    end
+    return false
+  end
+
 
   ## for username / password pair, check to see if they are valid.
   # mongo_params - +hashmap+ {:username,:password}
