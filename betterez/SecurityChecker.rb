@@ -115,11 +115,21 @@ class SecurityChecker
     if (user_info[user_key].length==2)
       user_info[user_key].each do |user_key_info|
         return false,ERROR_NO_USAGE_DATA if user_key_info[:usage].nil?
+
       end
+    else
+      create_aws_access_key_for_user(user_info.keys[0].to_s)
     end
-    # iam_client=Helpers.create_aws_iam_client
-    # iam_client.
     return true
+  end
+
+  ## creates an aws key for this username
+  def create_aws_access_key_for_user(username)
+    iam_client=Helpers.create_aws_iam_client
+    resp=iam_client.create_access_key({
+      user_name: username,
+    })
+    resp
   end
 
   ## creates a key info has from a user info one
