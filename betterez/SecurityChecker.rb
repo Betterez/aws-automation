@@ -1,6 +1,7 @@
 require 'aws-sdk'
 require_relative 'Helpers'
 class SecurityChecker
+  ERROR_NO_USAGE_DATA="error - no usage data"
   attr_reader(:all_users)
   attr_reader(:all_users_keys)
   attr_reader(:keys_data_index)
@@ -108,9 +109,14 @@ class SecurityChecker
 
   ## update_user_iam_keys - removes an old iam key and creates a new one
   # user_info - +hash+ containg keys array {"username":[key_id:,usage:,status:,created_date:,username:],}
+  # returns boolean and an error string if one happen
   def update_user_iam_keys(user_info)
-    # if (user_info[user_info.keys[0]].length==2)
-    #
+    user_key=user_info.keys[0]
+    if (user_info[user_key].length==2)
+      user_info[user_key].each do |user_key_info|
+        return false,ERROR_NO_USAGE_DATA if user_key_info[:usage].nil?
+      end
+    end
     # iam_client=Helpers.create_aws_iam_client
     # iam_client.
   end

@@ -33,6 +33,11 @@ class SecurityCheckerTest <Test::Unit::TestCase
     assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]<DateTime.new(2018,12,12))
   end
 
+  def test_user_update_key
+    result,error=@mock_checker.update_user_iam_keys(@mock_checker.all_users_keys[:"api_user"])
+    assert(!result,"should return false when trying to update a key without usage")
+    assert(error==SecurityChecker.ERROR_NO_USAGE_DATA,"should return ERROR_NO_USAGE_DATA when trying to update a key without usage")
+
   def test_key_validity
     result,err=@mock_checker.check_key_validity({key_name: :aws, key_value: "AKIA222222222222222222"})
     expected="invalid"
