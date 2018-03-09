@@ -35,8 +35,11 @@ class SecurityCheckerTest <Test::Unit::TestCase
 
   def test_user_update_key
     result,error=@mock_checker.update_user_iam_keys({"sample1": @mock_checker.all_users_keys[:sample1]})
-    assert(!result,"should return false when trying to update a key without usage and there are 2 keys")
-    assert(error==SecurityChecker::ERROR_NO_USAGE_DATA,"should return ERROR_NO_USAGE_DATA when trying to update a key without usage and there are 2 keys, got #{error}")
+    assert(!result.nil?)
+    assert(result.class==Hash)
+    assert(result[:access_key][:access_key_id]=="AKIAIOSFODNN7EXAMPLE","result key should be AKIAIOSFODNN7EXAMPLE, got #{result[:access_key][:access_key_id]}")
+    assert(error.nil?,"key should be created if only one exists, but we got #{error}")
+    
   end
 
   def test_key_validity

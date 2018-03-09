@@ -2,6 +2,7 @@ require 'aws-sdk'
 require_relative 'Helpers'
 class SecurityChecker
   ERROR_NO_USAGE_DATA="error - no usage data"
+  IAM_KEY_STATUS_INACTIVE="Inactive"
   attr_reader(:all_users)
   attr_reader(:all_users_keys)
   attr_reader(:keys_data_index)
@@ -109,18 +110,60 @@ class SecurityChecker
 
   ## update_user_iam_keys - removes an old iam key and creates a new one
   # user_info - +hash+ containg keys array {"username":[key_id:,usage:,status:,created_date:,username:],}
-  # returns boolean and an error string if one happen
+  # returns key response and and nil as error or nil and an error code
   def update_user_iam_keys(user_info)
     user_key=user_info.keys[0]
+    can_create_access_key=false
+    resp=error=nil
     if (user_info[user_key].length==2)
       user_info[user_key].each do |user_key_info|
-        return false,ERROR_NO_USAGE_DATA if user_key_info[:usage].nil?
+        break if can_create_access_key
+        # old key, no usage -> delete
+        if (user_key_info[:usage].nil? and (DateTime.now-@days_to_validate> user_key_info[:created_date]))
+          delete_iam_access_key(user_key_info)
+          can_create_access_key=true
+        #old key, active, -> needs to be freezed
+        elsif ((user_key_info[:usage]<DateTime.now-@days_to_clear_deletion) and
+          (DateTime.now-@days_to_validate> user_key_info[:created_date]) and
+
+        )
+          deactivate_iam_access_key(user_key_info)
+        # old key, 2 freezing periods, and inactive
+        elsif ((user_key_info[:usage]<DateTime.now-2*@days_to_clear_deletion) and
+          (DateTime.now-@days_to_validate> user_key_info[:created_date]) and
+          user_key_info[:status]==IAM_KEY_STATUS_INACTIVE)
+          delete_iam_access_key(user_key_info)
+        end
 
       end
     else
-      create_aws_access_key_for_user(user_info.keys[0].to_s)
+      can_create_access_key=true
     end
-    return true
+
+    resp=create_aws_access_key_for_user(user_info.keys[0].to_s) if can_create_access_key
+    return resp,error
+  end
+
+  ## deactivates access key from aws.
+  # user_key_info - +hash+ {key_id:"AKIA11111111111111111111",usage:nil,status:"Active",created_date:"2017-11-15 16:27:02 UTC",username:"user"}
+  def deactivate_iam_access_key(user_key_info)
+    iam_client=Helpers.create_aws_iam_client
+    resp = iam_client.update_access_key({
+      user_name: user_key_info[:username],
+      access_key_id: user_key_info[:key_id],
+      status: "Inactive",
+    })
+  end
+
+  ## deletes access key from aws.
+  # user_key_info - +hash+ {key_id:"AKIA11111111111111111111",usage:nil,status:"Active",created_date:"2017-11-15 16:27:02 UTC",username:"user"}
+  def delete_iam_access_key(user_key_info)
+    iam_client=Helpers.create_aws_iam_client
+    iam_client.delete_access_key({
+      access_key_id: user_key_info[:key_id],
+      user_name: user_key_info[:username],
+      })
+
   end
 
   ## creates an aws key for this username
@@ -132,10 +175,6 @@ class SecurityChecker
     resp
   end
 
-  ## creates a key info has from a user info one
-  def create_key_info_from_user_info(user_info)
-
-  end
   ## aws_key_be_deleted - checks if this key is eligible  from a security point of view
   # key_info - +hash+ include key_name (:aws, :mongo) and key_value +string+
   # returns: valid or invalid and an error string if one happend. else the error string will be nil

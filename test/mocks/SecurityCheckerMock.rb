@@ -35,4 +35,19 @@ class SecurityCheckerMock < SecurityChecker
     data
   end
 
+  def create_aws_access_key_for_user(username)
+    return {
+      access_key: {
+      access_key_id: "AKIAIOSFODNN7EXAMPLE",
+      create_date: DateTime.now,
+      secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY",
+      status: "Active",
+      user_name: username,
+      },}
+  end
+
+  def delete_iam_access_key(user_key_info)
+    return {}
+  end
+
 end
