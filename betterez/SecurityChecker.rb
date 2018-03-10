@@ -3,6 +3,7 @@ require_relative 'Helpers'
 class SecurityChecker
   ERROR_NO_USAGE_DATA="error - no usage data"
   IAM_KEY_STATUS_INACTIVE="Inactive"
+  IAM_KEY_STATUS_ACTIVE="Active"
   attr_reader(:all_users)
   attr_reader(:all_users_keys)
   attr_reader(:keys_data_index)
@@ -123,9 +124,10 @@ class SecurityChecker
           delete_iam_access_key(user_key_info)
           can_create_access_key=true
         #old key, active, -> needs to be freezed
-        elsif ((user_key_info[:usage]<DateTime.now-@days_to_clear_deletion) and
+        elsif (
+          (user_key_info[:usage]<DateTime.now-@days_to_clear_deletion) and
           (DateTime.now-@days_to_validate> user_key_info[:created_date]) and
-
+          (user_key_info[:status]==IAM_KEY_STATUS_ACTIVE)
         )
           deactivate_iam_access_key(user_key_info)
         # old key, 2 freezing periods, and inactive
@@ -133,8 +135,8 @@ class SecurityChecker
           (DateTime.now-@days_to_validate> user_key_info[:created_date]) and
           user_key_info[:status]==IAM_KEY_STATUS_INACTIVE)
           delete_iam_access_key(user_key_info)
+          can_create_access_key=true
         end
-
       end
     else
       can_create_access_key=true
