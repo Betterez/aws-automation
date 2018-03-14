@@ -33,6 +33,14 @@ class SecurityChecker
     service_keys
   end
 
+  def get_service_info_from_vault_driver(vault_driver,service_name)
+    data, code=vault_driver.get_json("secret/#{service_name}")
+    if code<399
+      return data,code
+    end
+    return nil,code
+  end
+
   ## return the key value for a key name
   # key_value - +string+ - the key name
   # service_params - +string+ service parameters "key=value,key2=value2"
@@ -118,11 +126,15 @@ class SecurityChecker
     resp=error=nil
     if (user_info[user_key].length==2)
       user_info[user_key].each do |user_key_info|
+        puts "now checking #{user_key_info}"
         break if can_create_access_key
         # old key, no usage -> delete
         if (user_key_info[:usage].nil? and (DateTime.now-@days_to_validate> user_key_info[:created_date]))
           delete_iam_access_key(user_key_info)
           can_create_access_key=true
+        # valid key, no usage
+        elsif (user_key_info[:usage].nil? and (DateTime.now-@days_to_validate <= user_key_info[:created_date]))
+          next
         #old key, active, -> needs to be freezed
         elsif (
           (user_key_info[:usage]<DateTime.now-@days_to_clear_deletion) and
@@ -144,6 +156,11 @@ class SecurityChecker
 
     resp=create_aws_access_key_for_user(user_info.keys[0].to_s) if can_create_access_key
     return resp,error
+  end
+
+  def update_iam_info_to_vault(vault_driver,access_key_response)
+    params={aws_service_key: access_key_response.access_key_id,aws_service_secret: access_key_response.secret_access_key}
+    vault_driver.put_json_for_repo(vault_setup[:repo],params,vault_setup[:append])
   end
 
   ## deactivates access key from aws.
