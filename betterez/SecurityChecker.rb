@@ -108,12 +108,14 @@ class SecurityChecker
   # returns: valid or invalid and an error string if one happend. else the error string will be nil
   def check_key_validity(key_info)
     if(key_info[:key_name]==:aws) then
-      return "invalid","can't find this key" if @keys_data_index[key_info[:key_value].to_sym].nil?
-      if ((Time.now-@days_to_validate) > (@keys_data_index[key_info[:key_value].to_sym][:created_date]))
+      return "error","can't find this key" if @keys_data_index[key_info[:key_value].to_sym].nil?
+      if ((DateTime.now-@days_to_validate) > (@keys_data_index[key_info[:key_value].to_sym][:created_date]))
         return "invalid",nil
       else
         return "valid",nil
       end
+    else
+      return "error","key unknown"
     end
   end
 
@@ -129,22 +131,22 @@ class SecurityChecker
         puts "now checking #{user_key_info}"
         break if can_create_access_key
         # old key, no usage -> delete
-        if (user_key_info[:usage].nil? and (Time.now-@days_to_validate> user_key_info[:created_date]))
+        if (user_key_info[:usage].nil? and (DateTime.now-@days_to_validate> user_key_info[:created_date]))
           delete_iam_access_key(user_key_info)
           can_create_access_key=true
         # valid key, no usage
-        elsif (user_key_info[:usage].nil? and (Time.now-@days_to_validate <= user_key_info[:created_date]))
+        elsif (user_key_info[:usage].nil? and (DateTime.now-@days_to_validate <= user_key_info[:created_date]))
           next
         #old key, active, -> needs to be freezed
         elsif (
-          (user_key_info[:usage]<Time.now-@days_to_clear_deletion) and
-          (Time.now-@days_to_validate> user_key_info[:created_date]) and
+          (user_key_info[:usage]<DateTime.now-@days_to_clear_deletion) and
+          (DateTime.now-@days_to_validate> user_key_info[:created_date]) and
           (user_key_info[:status]==IAM_KEY_STATUS_ACTIVE)
         )
           deactivate_iam_access_key(user_key_info)
         # old key, 2 freezing periods, and inactive
-        elsif ((user_key_info[:usage]<(Time.now-2*@days_to_clear_deletion)) and
-          (Time.now-@days_to_validate> user_key_info[:created_date]) and
+        elsif ((user_key_info[:usage]<(DateTime.now-2*@days_to_clear_deletion)) and
+          (DateTime.now-@days_to_validate> user_key_info[:created_date]) and
           user_key_info[:status]==IAM_KEY_STATUS_INACTIVE)
           delete_iam_access_key(user_key_info)
           can_create_access_key=true
@@ -201,7 +203,7 @@ class SecurityChecker
     result,err=check_key_validity(key_info)
     return false if err!=nil
     return false if @keys_data_index[key_info[:key_value].to_sym][:usage]==nil
-    if ((Time.now-@days_to_clear_deletion) > (@keys_data_index[key_info[:key_value].to_sym][:usage]))
+    if ((DateTime.now-@days_to_clear_deletion) > (@keys_data_index[key_info[:key_value].to_sym][:usage]))
       return true
     end
     return false

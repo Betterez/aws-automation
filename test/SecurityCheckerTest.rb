@@ -19,18 +19,18 @@ class SecurityCheckerTest <Test::Unit::TestCase
     assert(@mock_checker.all_users==["consol.user","api.user","sample1"],"@mock_checker.all_users=#{@mock_checker.all_users}")
     assert(@mock_checker.all_users!=["console.user","api.user","sample1"],"@mock_checker.all_users=#{@mock_checker.all_users}")
     assert(@mock_checker.all_users_keys[:"api.user"].class==Array)
-    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage].class==Time,"class usage is #{@mock_checker.all_users_keys[:"api.user"][0][:usage].class}, not Time.")
-    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage]>Time.new(2017,8,22))
-    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage]<Time.new(2017,8,24))
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage].class==DateTime,"class usage is #{@mock_checker.all_users_keys[:"api.user"][0][:usage].class}, not DateTime.")
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage]>DateTime.new(2017,8,22))
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:usage]<DateTime.new(2017,8,24))
 
-    assert(@mock_checker.all_users_keys[:"api.user"][0][:created_date].class==Time,"class created_date is #{@mock_checker.all_users_keys[:"api.user"][0][:created_date].class}, not Time.")
-    assert(@mock_checker.all_users_keys[:"api.user"][0][:created_date]>Time.new(2015,3,6))
-    assert(@mock_checker.all_users_keys[:"api.user"][0][:created_date]<Time.new(2015,3,8))
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:created_date].class==DateTime,"class created_date is #{@mock_checker.all_users_keys[:"api.user"][0][:created_date].class}, not DateTime.")
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:created_date]>DateTime.new(2015,3,6))
+    assert(@mock_checker.all_users_keys[:"api.user"][0][:created_date]<DateTime.new(2015,3,8))
 
     assert(@mock_checker.keys_data_index[:AKIA11111111111111111111][:usage].class==NilClass,"class usage is #{@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class}, not NilClass.")
-    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class==Time,"class usage is #{@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class}, not Time.")
-    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]>Time.new(2016,12,12))
-    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]<Time.new(2018,12,12))
+    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class==DateTime,"class usage is #{@mock_checker.keys_data_index[:AKIA222222222222222222][:usage].class}, not DateTime.")
+    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]>DateTime.new(2016,12,12))
+    assert(@mock_checker.keys_data_index[:AKIA222222222222222222][:usage]<DateTime.new(2018,12,12))
   end
 
   def test_user_update_key
@@ -46,10 +46,11 @@ class SecurityCheckerTest <Test::Unit::TestCase
     result,err=@mock_checker.check_key_validity({key_name: :aws, key_value: "AKIA222222222222222222"})
     expected="invalid"
     assert(result==expected,"results should be #{expected}, got #{result}")
+    assert(err==nil,"error is #{err} and not nil")
     @mock_checker.days_to_validate=5000
     result,err=@mock_checker.check_key_validity({key_name: :aws, key_value: "AKIA222222222222222222"})
     expected="valid"
-    assert(result==expected,"results should be #{expected}, got #{result}")
+    assert(result==expected,"results should be #{expected}, got #{result}, error code is #{err}")
   end
 
   def test_delete_elegibility
