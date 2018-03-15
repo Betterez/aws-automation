@@ -87,9 +87,9 @@ class SecurityChecker
         )
         key_data = {
           key_id: key_metadata.access_key_id,
-          usage: key_resp.access_key_last_used.last_used_date,
+          usage: dateyfay(key_resp.access_key_last_used.last_used_date),
           status: key_metadata.status,
-          created_date: key_metadata.create_date,
+          created_date: dateyfay(key_metadata.create_date),
           username: username,
         }
         @keys_data_index[key_data[:key_id]]=key_data
@@ -101,6 +101,18 @@ class SecurityChecker
       end
     end
     @keys_data_index
+  end
+
+  def dateyfay(param)
+    if param.nil?
+      return nil
+    elsif param.class==Time
+      return DateTime.parse(param.to_s)
+    elsif param.class ==DateTime
+      return param
+    else
+      return nil
+    end
   end
 
   ## check_key_validity - checks if this key is valid from a security point of view

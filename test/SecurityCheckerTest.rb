@@ -110,4 +110,15 @@ class SecurityCheckerTest <Test::Unit::TestCase
     assert(values.include?({key_name: :mongo, key_value: mongo_username}),"failed for #{values}")
     assert(!values.include?({key_name: :mongo, key_value: mongo_username+"12"}),"mongo user should not be found in #{values}")
   end
+
+  def test_dateyfire
+    assert(@mock_checker.dateyfay("hello")==nil)
+    dt1,dt2=DateTime.now
+    assert(@mock_checker.dateyfay(Time)==nil)
+    assert(@mock_checker.dateyfay(dt1)==dt1)
+    t1=Time.parse(dt1.to_s)
+    assert(@mock_checker.dateyfay(t1).class==DateTime)
+    dt1=DateTime.parse(t1.to_s)
+    assert(@mock_checker.dateyfay(t1).to_s==dt1.to_s,"was expecting #{dt1}, got #{t1}")
+  end
 end
