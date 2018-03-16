@@ -30,7 +30,7 @@ class AwsInstance
   # * +instance+ instance from amazon.
   # * +aws_setup_information+ hashed aws_setup_information.
   def initialize(instance, aws_setup_information)
-    throw "can't create an instance without setup data" if aws_setup_information==nil
+    throw "can't create an instance without setup data" if aws_setup_information.nil?
     @aws_setup_information = aws_setup_information
     @aws_instance_data = instance
     # load tags here
@@ -62,9 +62,9 @@ class AwsInstance
     end
     @host_port = 3000 if @host_port.nil?
     @ssh_timeout_period = 240_000
-    @build_number = 0 unless @build_number
+    @build_number ||= 0
     @immune = false if @immune.nil?
-    @instance_type=instance.instance_type
+    @instance_type = instance.instance_type
   end
 
   def get_aws_id
@@ -72,9 +72,9 @@ class AwsInstance
   end
 
   ## returns the tag value by it's name
-  def get_tag_by_name name
-    @aws_instance_data.tags.each do|tag_data|
-      return tag_data.value if tag_data.key==name
+  def get_tag_by_name(name)
+    @aws_instance_data.tags.each do |tag_data|
+      return tag_data.value if tag_data.key == name
     end
     nil
   end
@@ -117,7 +117,7 @@ class AwsInstance
       sleep(10)
       begin
         current_state = get_state_description
-      rescue
+      rescue StandardError
         current_state = 'unknown'
       end
     end
@@ -162,7 +162,7 @@ class AwsInstance
       notify "healthcheck with #{service_setup_data['deployment']['healthcheck']['command']}"
       output = run_ssh_command("cd /home/bz-app/#{@repository} && #{service_setup_data['deployment']['healthcheck']['command']}")
       return true, output if output.include? service_setup_data['deployment']['healthcheck']['result']
-    rescue => details
+    rescue StandardError => details
       notify(details)
       return false, output
     end
@@ -229,7 +229,7 @@ class AwsInstance
         Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
           result = ssh.exec!(ssh_command).to_s
         end
-      rescue
+      rescue StandardError
         done = false
         sleep command_delay
       end
@@ -303,6 +303,25 @@ class AwsInstance
       notifire.notify(1, "sorry! there is no ami id for type #{service_setup_data['machine']['image']}! Are you missing a packer run?")
       return []
     end
+    if service_setup_data[:pci_dss]
+      Helpers.log "checking psi dss settings"
+      Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
+      driver = VaultDriver.from_secrets_file service_setup_data[:environment]
+      if aws_setup_information.key?(:secrets)
+        puts "vault required."
+        puts 'vault unlocked' if driver.unlock_vault(aws_setup_information[:secrets][:vault][:keys]) == 200
+      else
+        puts 'no vault secrets file.'
+      end
+      Helpers.log 'loadning dss information'
+      checker = SecurityChecker.new
+      Helpers.log 'loading aws keys'
+      checker.get_all_aws_keys
+      Helpers.log 'loading aws keys done'
+      Helpers.log "checking security settings for service #{service_setup_data['deployment']['service_name']}"
+      ok,error=checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver)
+      throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" if (!error.nil?)
+    end
     total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
     puts "total_servers_number=#{total_servers_number}"
@@ -332,9 +351,9 @@ class AwsInstance
       end
     end
     instance_threads.each(&:join)
-    if (aws_instances.length < service_setup_data[:servers_count])
-      if (service_setup_data[:debug])
-          notifire.notify 1, 'keeping failed servers, debug'
+    if aws_instances.length < service_setup_data[:servers_count]
+      if service_setup_data[:debug]
+        notifire.notify 1, 'keeping failed servers, debug'
       else
         notifire.notify 1, 'created servers are below require number, terminating.'
         aws_instances.each(&:terminate_instance)
@@ -373,9 +392,9 @@ class AwsInstance
   end
 
   def update_init_file_and_restart(service_setup_data)
-    throw "nil aws_setup_information" if @aws_setup_information==nil
-    #puts "\n\n\nservice_setup_data=#{service_setup_data}\n\n\n"
-    #puts "\n\n\naws_setup_information=#{@aws_setup_information}\n\n\n"
+    throw 'nil aws_setup_information' if @aws_setup_information.nil?
+    # puts "\n\n\nservice_setup_data=#{service_setup_data}\n\n\n"
+    # puts "\n\n\naws_setup_information=#{@aws_setup_information}\n\n\n"
     service_installer = ServiceInstaller.new(service_setup_data, @aws_setup_information[service_setup_data[:environment].to_sym])
     service_installer.install_service(self)
     # remote_file_name = "/home/ubuntu/#{@repository}.conf"
@@ -403,10 +422,10 @@ class AwsInstance
       git_repo = service_setup_data['deployment']['source']['repo']
       notify "git: loading from #{git_repo} on branch #{branch_name} .."
       if existing_servers
-        ssh_command = "cd /home/bz-app/#{service_name} "+
-        "&& sudo -H -u bz-app bash -c 'git stash'"+
-        "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"+
-        " && sudo -H -u bz-app bash -c 'git pull origin #{branch_name}'"
+        ssh_command = "cd /home/bz-app/#{service_name} " \
+                      "&& sudo -H -u bz-app bash -c 'git stash'" \
+                      "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'" \
+                      " && sudo -H -u bz-app bash -c 'git pull origin #{branch_name}'"
       else
         ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo}'"
         run_ssh_command ssh_command
@@ -515,13 +534,13 @@ class AwsInstance
     notifire.notify 1, "#{Thread.current.object_id} waiting for it to run"
     aws_instance.wait_for_state('running')
     # registers iam for cloud watch.
-    client.associate_iam_instance_profile({
+    client.associate_iam_instance_profile(
       iam_instance_profile: { # required
         arn: Helpers.get_cloud_ern,
-        name: "CloudWatcher",
+        name: 'CloudWatcher'
       },
       instance_id: aws_instance.get_aws_id, # required
-    })
+    )
     notifire.notify 1, 'creating tags'
     service_setup_data['deployment']['path_name'] = '' if service_setup_data['deployment']['path_name'].nil?
     client.create_tags(dry_run: false,
@@ -550,15 +569,15 @@ class AwsInstance
         notifire.notify 1, "connected to server #{aws_instance.get_access_ip}"
         failed_attempts = 0
         break
-      rescue
+      rescue StandardError
         notifire.notify 1, "connection to server #{aws_instance.get_access_ip} failed, retrying, #{failed_attempts + 1} of #{maximum_attempts} maximum attempts "
         sleep(10)
         failed_attempts += 1
       end
     end
     if failed_attempts > 0
-      if (service_setup_data[:debug])
-          notifire.notify 1, 'keeping failed servers, debug'
+      if service_setup_data[:debug]
+        notifire.notify 1, 'keeping failed servers, debug'
       else
         notifire.notify(1, 'terminating instance due to failure')
         aws_instance.terminate_instance
@@ -613,8 +632,8 @@ class AwsInstance
           end
         end
         if failed_attempts > 0
-          if (service_setup_data[:debug])
-            notifire.notify(1, "keeping after failed.")
+          if service_setup_data[:debug]
+            notifire.notify(1, 'keeping after failed.')
           else
             aws_instance.terminate_instance
           end
@@ -626,9 +645,9 @@ class AwsInstance
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data[:build_number])
       aws_instance.update_tag_value 'Online', 'yes'
-    rescue => details
-      if (service_setup_data[:debug])
-        notifire.notify 1, "not terminating after an error, debug mode"
+    rescue StandardError => details
+      if service_setup_data[:debug]
+        notifire.notify 1, 'not terminating after an error, debug mode'
       else
         notifire.notify 1, "error #{details}\r\nTerminating instance."
         aws_instance.terminate_instance
@@ -659,7 +678,7 @@ class AwsInstance
       notify "ossec instance, settings agent for #{@environment}..."
       begin
         ossec_manager = OssecManager.new @environment
-      rescue
+      rescue StandardError
         notify "can't initialize ossec server for this environment."
         # return
       end
@@ -734,13 +753,12 @@ class AwsInstance
     aws_instance
   end
 
-  
   # gets all the instances that followes the tags in +params+.
   # * +filters+ Array of hashes. tags are listed like this: { name: 'tag:Environment', values: ["some value"] },
   # * +aws_setup_information+ Array of hashes. This is the aws info usually found in settings/aws-data.json
   # +returns+ an array of AwsInstance. empty array if none found.
-  def self.get_instances_with_filters(filters, aws_setup_information,zone=nil)
-    throw "can't filter instances with nil for aws info" if aws_setup_information==nil
+  def self.get_instances_with_filters(filters, aws_setup_information, zone = nil)
+    throw "can't filter instances with nil for aws info" if aws_setup_information.nil?
     all_instances = []
     client = Helpers.create_aws_ec2_client(zone)
     resp = if !filters.nil?

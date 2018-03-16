@@ -218,11 +218,15 @@ class SecurityChecker
   # service_name -+string+  service needed inspection
   # vault_driver - +VaultDriver+ that is already configured to that environment
   def check_security_for_service(_service_name, _vault_driver)
+    throw "can't proceed with a nil driver" if _vault_driver.nil?
+    throw "can't proceed with a offline driver" if !_vault_driver.get_vault_status
     #get the keys
     service_security_info, code = get_service_info_from_vault_driver(_vault_driver, _service_name)
     return code if code > 399
     return nil,nil if (!service_security_info.key?("aws_service_key"))
+    puts "looking for #{service_security_info['aws_service_key']} in the keys directory"
     key_info=@keys_data_index[service_security_info["aws_service_key"]]
+    return nil,"can't find data entry for this key: #{service_security_info['aws_service_key']}"
     username=key_info[:username]
     all_user_keys_info=@all_users_keys[username]
     updated_key_info,error=update_user_iam_keys({username=>all_user_keys_info})

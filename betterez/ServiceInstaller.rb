@@ -36,14 +36,6 @@ class ServiceInstaller
       end
       driver.get_vault_status
       if driver.online && !driver.locked
-        if (service_setup_data[:pci_dss])
-          Helpers.log "loadning dss information"
-          checker=SecurityChecker.new
-          Helpers.log "loading aws keys"
-          checker.get_all_aws_keys
-          Helpers.log "loading aws keys done"
-          checker.check_security_for_service(service_setup_data['deployment']['service_name'],driver)
-        end
         vault_data = driver.get_system_variables_for_service(service_setup_data['deployment']['service_name'])
         if !vault_data.nil? && vault_data != ''
           puts 'vault data loaded'
