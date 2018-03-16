@@ -229,7 +229,7 @@ class SecurityChecker
     puts "error: #{error}" if error!=nil
     puts "nothing to update" if updated_key_info.nil?
     if error.nil? && !updated_key_info.nil?
-      puts "new key created:#{updated_key_info.access_key}"
+      puts "new key created:#{updated_key_info.access_key.access_key_id}"
       code=_vault_driver.put_json_for_repo(_service_name,
         {"aws_service_key"=>updated_key_info.access_key.access_key_id,"aws_service_secret"=>updated_key_info.access_key.secret_access_key},
         true,)

@@ -44,6 +44,7 @@ OptionParser.new do |opts|
         service_settings[:debug] = true
     end
 end.parse!
+
 # check the settings
 raise OptionParser::MissingArgument if service_settings[:environment].nil? || service_settings[:environment] == ''
 raise OptionParser::MissingArgument if service_settings[:build_number].nil? || service_settings[:build_number] == ''

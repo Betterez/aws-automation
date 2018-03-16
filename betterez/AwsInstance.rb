@@ -734,74 +734,7 @@ class AwsInstance
     aws_instance
   end
 
-  def self.generate_init_file(service_setup_data, aws_environment_data, current_environment)
-    files_data = []
-    current_environment = current_environment.to_sym if current_environment.class == String
-    current_environment_data = aws_environment_data[current_environment]
-    file_data = { script: '', location: '' }
-    vault_data = ''
-    run_command = service_setup_data['machine']['start']
-    case service_setup_data['machine']['daemon_type']
-    when 'upstart'
-      file_data[:script] = "
-        ######### generate at #{Helpers.create_time_date_string} ##########
-        start on runlevel [2345]
-        stop on runlevel [!2345]
-        script
-        chdir /home/bz-app/[repo]/
-        exec sudo -H -u bz-app bash -c '[vault_data] [environment_variables] BUILD_NUMBER=$(cat /home/bz-app/build_number.txt) #{run_command}'
-        end script
-        respawn
-        ######################
-        "
-      file_data[:location] = "/etc/init/#{service_setup_data['deployment']['service_name']}.conf"
-      files_data.push file_data
-    when 'systemd'
-      file_data[:script] = "
-      [Unit]
-      Description=simple node hello web server
-
-      [Service]
-      Environment=[vault_data] [environment_variables] BUILD_NUMBER=$(cat /home/bz-app/build_number.txt)
-      WorkingDirectory=/home/bz-app/[repo]/
-      ExecStart=[runner_path] /home/tal/node_server
-      Restart=always
-
-      [Install]
-      WantedBy=multi-user.target
-      "
-      file_data[:location] = "/etc/systemd/system/service_setup_data#{['deployment']['service_name']}.service"
-    end
-    files_data.each do |current_file_data|
-      current_file_data[:script].gsub!('[repo]', service_setup_data['deployment']['service_name'])
-    end
-    environment_variables = ''
-    if service_setup_data['machine'].key?('environment_variables')
-      service_setup_data['machine']['environment_variables'].each do |environment_variable|
-        environment_variables += "#{environment_variable} "
-      end
-    end
-    files_data.each do |current_file_data|
-      current_file_data[:script].gsub!('[environment_variables]', environment_variables)
-    end
-
-    if current_environment_data.key? :vault
-      driver = VaultDriver.from_secrets_file current_environment.to_s
-      if current_environment_data.key?(:secrets)
-        puts 'vault unlocked' if driver.unlock_vault(current_environment_data[:secrets][:vault][:keys]) == 200
-      else
-        puts 'no vault secrets file.'
-      end
-      driver.get_vault_status
-      if driver.online && !driver.locked
-        vault_data = driver.get_system_variables_for_service(service_setup_data['deployment']['service_name'])
-      end
-    end
-    files_data.each do |current_file_data|
-      current_file_data[:script].gsub!('[vault_data]', vault_data)
-    end
-  end
-
+  
   # gets all the instances that followes the tags in +params+.
   # * +filters+ Array of hashes. tags are listed like this: { name: 'tag:Environment', values: ["some value"] },
   # * +aws_setup_information+ Array of hashes. This is the aws info usually found in settings/aws-data.json
