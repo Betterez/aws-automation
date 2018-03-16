@@ -37,6 +37,9 @@ OptionParser.new do |opts|
     opts.on('--service_file SERVICE_FILE', 'yml service file') do |argument|
         service_settings[:service_file] = argument
     end
+    opts.on('--pci_dss', 'update service keys') do |argument|
+        service_settings[:pci_dss] = true
+    end
     opts.on('--debug', "don't create backup machines") do |_argument|
         service_settings[:debug] = true
     end
