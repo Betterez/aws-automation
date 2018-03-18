@@ -4,6 +4,7 @@ class SecurityChecker
   ERROR_NO_USAGE_DATA = 'error - no usage data'.freeze
   IAM_KEY_STATUS_INACTIVE = 'Inactive'.freeze
   IAM_KEY_STATUS_ACTIVE = 'Active'.freeze
+  AWS_SERVICE_KEY = 'aws_service_key'.freeze
   attr_reader(:all_users)
   attr_reader(:all_users_keys)
   attr_reader(:keys_data_index)
@@ -166,9 +167,9 @@ class SecurityChecker
     [resp, error]
   end
 
-  def update_iam_info_to_vault(vault_driver, access_key_response)
-    params = { aws_service_key: access_key_response.access_key_id, aws_service_secret: access_key_response.secret_access_key }
-    vault_driver.put_json_for_repo(vault_setup[:repo], params, vault_setup[:append])
+  def update_iam_info_to_vault(vault_driver, access_key_response,_repository_name)
+    params = { aws_service_key: access_key_response.access_key.access_key_id, aws_service_secret: access_key_response.access_key.secret_access_key }
+    vault_driver.put_json_for_repo(_repository_name, params, true)
   end
 
   ## deactivates access key from aws.
@@ -218,15 +219,16 @@ class SecurityChecker
   # service_name -+string+  service needed inspection
   # vault_driver - +VaultDriver+ that is already configured to that environment
   def check_security_for_service(_service_name, _vault_driver)
+    get_all_aws_keys
     throw "can't proceed with a nil driver" if _vault_driver.nil?
     throw "can't proceed with a offline driver" if !_vault_driver.get_vault_status
     #get the keys
     service_security_info, code = get_service_info_from_vault_driver(_vault_driver, _service_name)
     return code if code > 399
-    return nil,nil if (!service_security_info.key?("aws_service_key"))
-    puts "looking for #{service_security_info['aws_service_key']} in the keys directory"
-    key_info=@keys_data_index[service_security_info["aws_service_key"]]
-    return nil,"can't find data entry for this key: #{service_security_info['aws_service_key']}"
+    return nil,nil if (!service_security_info.key?(AWS_SERVICE_KEY))
+    puts "looking for #{service_security_info[AWS_SERVICE_KEY]} in the keys directory"
+    key_info=@keys_data_index[service_security_info[AWS_SERVICE_KEY]]
+    return nil,"can't find data entry for this key: #{service_security_info[AWS_SERVICE_KEY]}"
     username=key_info[:username]
     all_user_keys_info=@all_users_keys[username]
     updated_key_info,error=update_user_iam_keys({username=>all_user_keys_info})
@@ -235,10 +237,26 @@ class SecurityChecker
     if error.nil? && !updated_key_info.nil?
       puts "new key created:#{updated_key_info.access_key.access_key_id}"
       code=_vault_driver.put_json_for_repo(_service_name,
-        {"aws_service_key"=>updated_key_info.access_key.access_key_id,"aws_service_secret"=>updated_key_info.access_key.secret_access_key},
+        {AWS_SERVICE_KEY=>updated_key_info.access_key.access_key_id,"aws_service_secret"=>updated_key_info.access_key.secret_access_key},
         true,)
     end
     return code,nil
+  end
+
+  ## remove all keys for the current user create a new key and update vault.
+  ## caution: only use in cases where the key was removed manually
+  # _vault_driver -+VaultDriver+ class instance
+  # _username -+string+ the aws username for that key
+  # returns success code and an error. nil,error or code,nil on success
+  def force_create_and_update_user_key(_vault_driver,_username,_repository_name)
+    get_all_aws_keys
+    return nil,"Can't find a key for this user: #{_username}" if !@all_users_keys.key?(_username)
+    @all_users_keys[_username].each do |user_key_info|
+      delete_iam_access_key(user_key_info)
+    end
+    resp = create_aws_access_key_for_user(_username)
+    code,error=update_iam_info_to_vault(_vault_driver,resp,_repository_name)
+    return code,error
   end
 
   ## for username / password pair, check to see if they are valid.
