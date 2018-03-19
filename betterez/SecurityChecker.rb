@@ -33,6 +33,33 @@ class SecurityChecker
     service_keys
   end
 
+  ## is_key_ses_key - checks if this key is an ses key, which means that an ses code has to be created
+  # key_id-+string+ the aws key id
+  # return boolean and and error code. the error code will be nil if none occurred (true,nil)
+  def is_key_ses_key(key_id)
+    get_all_aws_keys
+    return false,"Can't find this key id!"  if @keys_data_index[key_id].nil?
+    key_data=@keys_data_index[key_id]
+    if key_data[:ses_info].nil?
+      resp=client.list_groups_for_user({
+        user_name: key_data["username"]
+      })
+      user_key_data=@all_users_keys[key_data["username"]]
+      user_key_data[:groups]=[] if user_key_data[:groups].nil?
+      resp.groups.each do |group_info|
+        user_key_data[:groups].push(group_info)
+      end
+      user_key_data[:policies]=[] if user_key_data[:policies].nil?
+      user_key_data[:groups].each do |selected_user_group|
+        resp=client.list_group_policies({
+          group_name: selected_user_group[:group_name]
+          })
+
+      end
+    end
+  end
+
+
   def get_service_info_from_vault_driver(vault_driver, service_name)
     data, code = vault_driver.get_json("secret/#{service_name}")
     return data, code if code < 399
