@@ -226,10 +226,10 @@ class SecurityChecker
     service_security_info, code = get_service_info_from_vault_driver(_vault_driver, _service_name)
     return code if code > 399
     return nil,nil if (!service_security_info.key?(AWS_SERVICE_KEY))
-    puts "looking for #{service_security_info[AWS_SERVICE_KEY]} in the keys directory"
-    key_info=@keys_data_index[service_security_info[AWS_SERVICE_KEY]]
-    return nil,"can't find data entry for this key: #{service_security_info[AWS_SERVICE_KEY]}"
-    username=key_info[:username]
+    puts "looking for #{service_security_info[AWS_SERVICE_KEY]}(#{service_security_info[AWS_SERVICE_KEY].class}) in the keys directory"
+    selected_key_information=@keys_data_index[service_security_info[AWS_SERVICE_KEY]]
+    return nil,"can't find data entry for this key: #{service_security_info[AWS_SERVICE_KEY]}" if selected_key_information.nil?
+    username=selected_key_information[:username]
     all_user_keys_info=@all_users_keys[username]
     updated_key_info,error=update_user_iam_keys({username=>all_user_keys_info})
     puts "error: #{error}" if error!=nil
