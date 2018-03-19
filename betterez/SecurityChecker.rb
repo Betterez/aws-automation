@@ -54,7 +54,7 @@ class SecurityChecker
         resp=client.list_group_policies({
           group_name: selected_user_group[:group_name]
           })
-
+        user_key_data[:policies].concat(resp.policy_names)
       end
     end
   end
