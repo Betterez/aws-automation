@@ -238,6 +238,28 @@ class AwsInstance
     result
   end
 
+  def self.run_pci_dss_check(service_setup_data,aws_setup_information)
+    if service_setup_data[:pci_dss]
+      Helpers.log "checking psi dss settings"
+      Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
+      driver = VaultDriver.from_secrets_file service_setup_data[:environment]
+      if aws_setup_information.key?(:secrets)
+        puts "vault required."
+        puts 'vault unlocked' if driver.unlock_vault(aws_setup_information[:secrets][:vault][:keys]) == 200
+      else
+        puts 'no vault secrets file.'
+      end
+      Helpers.log 'loadning dss information'
+      checker = SecurityChecker.new
+      Helpers.log 'loading aws keys'
+      checker.get_all_aws_keys
+      Helpers.log 'loading aws keys done'
+      Helpers.log "checking security settings for service #{service_setup_data['deployment']['service_name']}"
+      ok,error=checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver)
+      throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" if (!error.nil?)
+    end
+  end
+
   def upload_data_to_file(data, remote_file_name)
     Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
       ssh.scp.upload!(StringIO.new(data), remote_file_name)
@@ -303,25 +325,6 @@ class AwsInstance
       notifire.notify(1, "sorry! there is no ami id for type #{service_setup_data['machine']['image']}! Are you missing a packer run?")
       return []
     end
-    if service_setup_data[:pci_dss]
-      Helpers.log "checking psi dss settings"
-      Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
-      driver = VaultDriver.from_secrets_file service_setup_data[:environment]
-      if aws_setup_information.key?(:secrets)
-        puts "vault required."
-        puts 'vault unlocked' if driver.unlock_vault(aws_setup_information[:secrets][:vault][:keys]) == 200
-      else
-        puts 'no vault secrets file.'
-      end
-      Helpers.log 'loadning dss information'
-      checker = SecurityChecker.new
-      Helpers.log 'loading aws keys'
-      checker.get_all_aws_keys
-      Helpers.log 'loading aws keys done'
-      Helpers.log "checking security settings for service #{service_setup_data['deployment']['service_name']}"
-      ok,error=checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver)
-      throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" if (!error.nil?)
-    end
     total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
     puts "total_servers_number=#{total_servers_number}"
@@ -341,6 +344,7 @@ class AwsInstance
         instances_data << { infra_data: infra_data, ami_id: ami_id }
       end
     end
+    self.run_pci_dss_check(service_setup_data,aws_setup_information)
     transaction = Transaction.new service_setup_data[:servers_count]
     limiter = Random.new
     instances_data.each do |instance_data|

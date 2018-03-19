@@ -88,6 +88,7 @@ class ServerCreator
             service_setup_data[:install_type] = :existing_servers
             service_setup_data['deployment']['elb_version'] = 1 unless service_setup_data['deployment'].key? 'elb_version'
             instance_threads = []
+            AwsInstance.run_pci_dss_check(service_setup_data,@params)
             instances_up_to_date.each do |instance|
                 sleep ( 0.1+limiter.rand(2000)/100 )
                 instance_threads << Thread.new do
