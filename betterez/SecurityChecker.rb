@@ -5,6 +5,7 @@ class SecurityChecker
   IAM_KEY_STATUS_INACTIVE = 'Inactive'.freeze
   IAM_KEY_STATUS_ACTIVE = 'Active'.freeze
   AWS_SERVICE_KEY = 'aws_service_key'.freeze
+
   attr_reader(:all_users)
   attr_reader(:all_users_keys)
   attr_reader(:keys_data_index)
@@ -57,7 +58,7 @@ class SecurityChecker
           })
         user_key_data[:policies].concat(resp.policy_names)
       end
-      for user_key_data[:policies].each do |policy|
+      user_key_data[:policies].each do |policy|
         if policy.downcase.include?("ses")
           key_data[:ses_info]=true
           return true
@@ -68,10 +69,15 @@ class SecurityChecker
   end
 
   ## calculate_ses_password - calculate ses password from an aws key
-  # key_id - +string+
-  # return ses secret,error both strings. one will be nil
-  def calculate_ses_password(key_id,vault_driver)
-
+  # key_secret - +string+
+  # returns ses secret +string+
+  def calculate_ses_password(key_secret)
+    message = "SendRawEmail"
+    versionInBytes = "\x02"
+    signatureInBytes = OpenSSL::HMAC.digest('sha256', key_secret, message)
+    signatureAndVer = versionInBytes + signatureInBytes
+    smtpPassword = Base64.encode64(signatureAndVer)
+    return smtpPassword.to_s.strip
   end
 
   def get_service_info_from_vault_driver(vault_driver, service_name)

@@ -77,6 +77,13 @@ class SecurityCheckerTest <Test::Unit::TestCase
     assert(@mock_checker.all_users_keys[:"api.user"].length==2)
   end
 
+  def test_ses_smtp_password_generation
+    testKey = "q1w2e3r4t5y6q1w2e3r4t5y6q1w2e3r4t5y6zzzz"
+	  result  = "Alo/zZmiD2A9FiTR2Y1hitH3JZlcHOf6jTIwFBPlJw6b"
+    test_results=@mock_checker.calculate_ses_password(testKey)
+    assert(result==test_results,"expect *#{result}- to be equalt to *#{test_results}*")
+  end
+
   def test_param_extract
     params="data1=123,data2=2"
     value=@mock_checker.get_key_value_for_param("data1",params)
