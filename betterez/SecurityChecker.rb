@@ -40,6 +40,7 @@ class SecurityChecker
     get_all_aws_keys
     return false,"Can't find this key id!"  if @keys_data_index[key_id].nil?
     key_data=@keys_data_index[key_id]
+    return true if (key_data[:ses_info]==true)
     if key_data[:ses_info].nil?
       resp=client.list_groups_for_user({
         user_name: key_data["username"]
@@ -56,9 +57,22 @@ class SecurityChecker
           })
         user_key_data[:policies].concat(resp.policy_names)
       end
+      for user_key_data[:policies].each do |policy|
+        if policy.downcase.include?("ses")
+          key_data[:ses_info]=true
+          return true
+        end
+      end
     end
+    return false
   end
 
+  ## calculate_ses_password - calculate ses password from an aws key
+  # key_id - +string+
+  # return ses secret,error both strings. one will be nil
+  def calculate_ses_password(key_id,vault_driver)
+
+  end
 
   def get_service_info_from_vault_driver(vault_driver, service_name)
     data, code = vault_driver.get_json("secret/#{service_name}")
