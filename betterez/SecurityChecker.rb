@@ -264,9 +264,10 @@ class SecurityChecker
 
   ## check_security_for_service -load the service info from vault and checks for
   # service_name -+string+  service needed inspection
-  # vault_driver - +VaultDriver+ that is already configured to that environment
+  # vault_driver - +VaultDriver+ that is already configured to the correct environment
   def check_security_for_service(_service_name, _vault_driver)
     get_all_aws_keys
+    is_ses_key=false
     throw "can't proceed with a nil driver" if _vault_driver.nil?
     throw "can't proceed with a offline driver" if !_vault_driver.get_vault_status
     #get the keys
@@ -276,6 +277,7 @@ class SecurityChecker
     puts "looking for #{service_security_info[AWS_SERVICE_KEY]}(#{service_security_info[AWS_SERVICE_KEY].class}) in the keys directory"
     selected_key_information=@keys_data_index[service_security_info[AWS_SERVICE_KEY]]
     return nil,"can't find data entry for this key: #{service_security_info[AWS_SERVICE_KEY]}" if selected_key_information.nil?
+    is_ses_key=is_key_ses_key(service_security_info[AWS_SERVICE_KEY])
     username=selected_key_information[:username]
     all_user_keys_info=@all_users_keys[username]
     updated_key_info,error=update_user_iam_keys({username=>all_user_keys_info})
@@ -283,8 +285,14 @@ class SecurityChecker
     puts "nothing to update" if updated_key_info.nil?
     if error.nil? && !updated_key_info.nil?
       puts "new key created:#{updated_key_info.access_key.access_key_id}"
+      update_hash={AWS_SERVICE_KEY=>updated_key_info.access_key.access_key_id,"aws_service_secret"=>updated_key_info.access_key.secret_access_key}
+      if is_ses_key
+        puts "this service is using ses"
+        update_hash["email_client_username"]=updated_key_info.access_key.access_key_id
+        update_hash["email_client_password"]=calculate_ses_password(updated_key_info.access_key.secret_access_key)
+      end
       code=_vault_driver.put_json_for_repo(_service_name,
-        {AWS_SERVICE_KEY=>updated_key_info.access_key.access_key_id,"aws_service_secret"=>updated_key_info.access_key.secret_access_key},
+        update_hash,
         true,)
     end
     return code,nil
