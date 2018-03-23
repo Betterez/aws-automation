@@ -15,9 +15,11 @@ class SecurityChecker
     @keys_data_index = nil
     @all_users = nil
     @all_users_keys = nil
+    @users_policy_data={}
     # number of days after which key will consider not secure
     @days_to_validate = 90
     @days_to_clear_deletion = 10
+    get_all_aws_keys
   end
 
   ## checks if parameters contains any known services keys. currently supported mongo and aws
@@ -39,26 +41,39 @@ class SecurityChecker
   # return boolean and and error code. the error code will be nil if none occurred (true,nil)
   def is_key_ses_key(key_id)
     get_all_aws_keys
+    client=Helpers.create_aws_iam_client
     return false,"Can't find this key id!"  if @keys_data_index[key_id].nil?
     key_data=@keys_data_index[key_id]
+    return nil,"no user name found" if key_data[:username].nil?
     return true if (key_data[:ses_info]==true)
     if key_data[:ses_info].nil?
       resp=client.list_groups_for_user({
-        user_name: key_data["username"]
+        user_name: key_data[:username]
       })
-      user_key_data=@all_users_keys[key_data["username"]]
-      user_key_data[:groups]=[] if user_key_data[:groups].nil?
+      @users_policy_data[key_data[:username]]={} if @users_policy_data[key_data[:username]].nil?
+      user_policy_data=@users_policy_data[key_data[:username]]
+      user_policy_data[:groups]=[] if user_policy_data[:groups].nil?
       resp.groups.each do |group_info|
-        user_key_data[:groups].push(group_info)
+        user_policy_data[:groups].push(group_info)
       end
-      user_key_data[:policies]=[] if user_key_data[:policies].nil?
-      user_key_data[:groups].each do |selected_user_group|
+      user_policy_data[:policies]=[] if user_policy_data[:policies].nil?
+      user_policy_data[:groups].each do |selected_user_group|
         resp=client.list_group_policies({
           group_name: selected_user_group[:group_name]
           })
-        user_key_data[:policies].concat(resp.policy_names)
+        user_policy_data[:policies].concat(resp.policy_names)
       end
-      user_key_data[:policies].each do |policy|
+      # load aws build in policies for that user
+      user_policy_data[:groups].each do |selected_user_group|
+        resp=client.list_attached_group_policies({
+          group_name: selected_user_group[:group_name]
+          })
+        resp.attached_policies.each do |attach_policy|
+          user_policy_data[:policies].push(attach_policy.policy_name)
+        end
+      end
+      user_policy_data[:policies].each do |policy|
+        puts "checking #{policy}"
         if policy.downcase.include?("ses")
           key_data[:ses_info]=true
           return true
@@ -277,7 +292,10 @@ class SecurityChecker
     puts "looking for #{service_security_info[AWS_SERVICE_KEY]}(#{service_security_info[AWS_SERVICE_KEY].class}) in the keys directory"
     selected_key_information=@keys_data_index[service_security_info[AWS_SERVICE_KEY]]
     return nil,"can't find data entry for this key: #{service_security_info[AWS_SERVICE_KEY]}" if selected_key_information.nil?
-    is_ses_key=is_key_ses_key(service_security_info[AWS_SERVICE_KEY])
+    is_ses_key,error=is_key_ses_key(service_security_info[AWS_SERVICE_KEY])
+    throw "Can't check ses key - #{error}" if (!error.nil?)
+    puts "service is not using ses " if is_ses_key==false
+    puts "This is a ses service" if is_ses_key==true
     username=selected_key_information[:username]
     all_user_keys_info=@all_users_keys[username]
     updated_key_info,error=update_user_iam_keys({username=>all_user_keys_info})
