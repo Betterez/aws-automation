@@ -43,6 +43,8 @@ class ServerCreator
     end
 
     def create_servers_from_parameters(service_setup_data)
+        ELBClient.get_lb_healthcheck(service_setup_data)
+        exit 0
         update_service_setup_data(service_setup_data)
         servers = create_instances_from_parameters(service_setup_data)
         throw 'error creating servers' if servers.nil? || servers.empty?
@@ -65,6 +67,8 @@ class ServerCreator
       end
     end
     def create_or_update_server(service_setup_data)
+      ELBClient.get_lb_healthcheck(service_setup_data)
+      exit 0
       update_service_setup_data service_setup_data
         notify('looking for instances...')
         aws_filters = [{ name: 'tag:Environment', values: [service_setup_data[:environment].to_s] },
