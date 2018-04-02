@@ -43,8 +43,7 @@ class ServerCreator
     end
 
     def create_servers_from_parameters(service_setup_data)
-        ELBClient.get_lb_healthcheck(service_setup_data)
-        exit 0
+        throw "healthcheck doesn't match" if check_service_setup_healthcheck(service_setup_data)==false
         update_service_setup_data(service_setup_data)
         servers = create_instances_from_parameters(service_setup_data)
         throw 'error creating servers' if servers.nil? || servers.empty?
@@ -66,9 +65,17 @@ class ServerCreator
         service_setup_data['deployment']['balancer_configuration'] = service_setup_data['deployment']['nginx_conf']
       end
     end
+
+    def check_service_setup_healthcheck(service_setup_data)
+      if service_setup_data["deployment"]["healthcheck"]["perform"]==true
+        rg=Regexp.compile("\/[\/a-z]+")
+        return rg.match(service_setup_data["deployment"]["healthcheck"]["command"]).to_s == ELBClient.get_lb_healthcheck(service_setup_data)
+      end
+      nil
+    end
+
     def create_or_update_server(service_setup_data)
-      puts ELBClient.get_lb_healthcheck(service_setup_data)
-      exit 0
+      throw "healthcheck doesn't match" if check_service_setup_healthcheck(service_setup_data)==false
       update_service_setup_data service_setup_data
         notify('looking for instances...')
         aws_filters = [{ name: 'tag:Environment', values: [service_setup_data[:environment].to_s] },

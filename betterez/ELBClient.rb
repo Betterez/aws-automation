@@ -251,7 +251,6 @@ class ELBClient
   # returns an array of +sting+ names of elbs
   # * +tag_filters+ - a hash of tag to use in a name=>value settings
   def self.filter_elb_with_tags(tag_filters)
-    puts 'filter_elb_with_tags'
     client = Helpers.CreateELB
     resp = client.describe_load_balancers
     elbs = []
@@ -276,7 +275,6 @@ class ELBClient
   # returns an array of load balancer data names of elbs
   # * +tag_filters+ - a hash of tag to use in a name=>value settings
   def self.get_elb_data_with_tags(tag_filters)
-    puts 'filter_elb_with_tags'
     client = Helpers.CreateELB
     resp = client.describe_load_balancers
     elbs = []
@@ -552,12 +550,10 @@ class ELBClient
       'Release' => 'yes',
       'Elb-Type' => service_configuration['deployment']['nginx_conf']
     }
-    puts "filters: #{filters}"
     if service_configuration['deployment']['elb_version'] == 2
       groups = ELBClient.filter_groups_with_tags(filters)
       return '' if groups.nil? || groups.empty?
       return groups[0].health_check_path
-      # puts service_configuration["deployment"]["healthcheck"]["command"]
     elsif service_configuration['deployment']['elb_version'] == 1 || service_configuration['deployment']['elb_version'].nil?
       elbs = ELBClient.get_elb_data_with_tags(filters)
       return '' if elbs.nil? || elbs.empty?
