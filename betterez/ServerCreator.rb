@@ -67,7 +67,7 @@ class ServerCreator
       end
     end
     def create_or_update_server(service_setup_data)
-      ELBClient.get_lb_healthcheck(service_setup_data)
+      puts ELBClient.get_lb_healthcheck(service_setup_data)
       exit 0
       update_service_setup_data service_setup_data
         notify('looking for instances...')

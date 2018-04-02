@@ -248,9 +248,10 @@ class ELBClient
     { elb: elb_resp, health_check: health_check }
   end
 
-  # returns a filtered list of elbs that has all the tags with the mentioned value
+  # returns an array of +sting+ names of elbs
   # * +tag_filters+ - a hash of tag to use in a name=>value settings
   def self.filter_elb_with_tags(tag_filters)
+    puts "filter_elb_with_tags"
     client = Helpers.CreateELB
     resp = client.describe_load_balancers
     elbs = []
@@ -271,6 +272,32 @@ class ELBClient
     end
     elbs
   end
+
+  # returns an array of load balancer data names of elbs
+  # * +tag_filters+ - a hash of tag to use in a name=>value settings
+  def self.get_elb_data_with_tags(tag_filters)
+    puts "filter_elb_with_tags"
+    client = Helpers.CreateELB
+    resp = client.describe_load_balancers
+    elbs = []
+    resp.load_balancer_descriptions.each do |current_elb_data|
+      resp2 = client.describe_tags(load_balancer_names: [current_elb_data.load_balancer_name])
+      instance_match = 0
+      resp2.tag_descriptions.each do |current_elb_tags_data|
+        current_elb_tags_data.tags.each do |current_tag_data|
+          if (tag_filters.keys.include? current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
+            instance_match += 1
+            end
+          if instance_match == tag_filters.keys.length
+            elbs.push current_elb_data
+            break
+          end
+        end
+      end
+    end
+    elbs
+  end
+
 
   # returns a filtered list of albs that has all the tags with the mentioned value
   # * +tag_filters+ - a hash of tag to use in a name=>value settings
@@ -532,10 +559,12 @@ class ELBClient
       return '' if groups.nil? || groups.empty?
       return groups[0].health_check_path
       # puts service_configuration["deployment"]["healthcheck"]["command"]
-    elsif service_configuration['deployment']['elb_version'] == 1
-      elbs = ELBClient.filter_elb_with_tags(filters)
+    elsif (service_configuration['deployment']['elb_version'] == 1||service_configuration['deployment']['elb_version'].nil?)
+      elbs = ELBClient.get_elb_data_with_tags(filters)
       return '' if( elbs.nil? || elbs.empty?)
-      return elbs[0].health_check_path
+      elb_healthstring=elbs[0][:health_check][:target]
+      position=elb_healthstring.index "/"
+      return elb_healthstring[position..elb_healthstring.length]
     end
   end
 
