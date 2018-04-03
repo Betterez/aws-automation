@@ -75,7 +75,12 @@ class ServerCreator
     end
 
     def create_or_update_server(service_setup_data)
-      throw "healthcheck doesn't match" if check_service_setup_healthcheck(service_setup_data)==false
+      if check_service_setup_healthcheck(service_setup_data)==false
+        puts ""
+        puts "WARNING healthcheck may fail deployment - lb and service file discrepancy"
+        puts "WARNING healthcheck #{service_setup_data["deployment"]["healthcheck"]["command"]} no responding to #{ELBClient.get_lb_healthcheck(service_setup_data)}"
+        puts ""
+      end
       update_service_setup_data service_setup_data
         notify('looking for instances...')
         aws_filters = [{ name: 'tag:Environment', values: [service_setup_data[:environment].to_s] },
