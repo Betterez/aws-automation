@@ -39,7 +39,7 @@ if(settings[vault_setup[:env].to_sym].has_key?(:vault) == false)
   exit 1
 end
 
-exp=Regexp.new('([\w]+)=([\w!@#$%^&/*\(\)\~\+\\\.;-]+)')
+exp=Regexp.new('([\w]+)=([\w!@#$%^&\/*\(\)\~\+\\\:.;-]+)')
 res=vault_setup[:vars].scan(exp)
 params={}
 res.each do |pair|
