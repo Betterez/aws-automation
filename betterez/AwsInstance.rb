@@ -4,6 +4,7 @@ require_relative 'VaultDriver'
 require_relative 'Transaction'
 require_relative 'ServiceInstaller'
 require_relative 'OssecManager'
+require_relative 'Syslogger'
 require 'net/ssh'
 require 'net/scp'
 
@@ -238,6 +239,28 @@ class AwsInstance
     result
   end
 
+  ## update_logger_config
+  # update logger config data for log entries if exists in vault
+  def update_logger_config(service_setup_data)
+    driver = VaultDriver.from_secrets_file service_setup_data[:environment]
+    service_name=service_setup_data['deployment']['service_name']
+    logger=Syslogger(self,driver,service_name)
+    if logger.check_record_exists
+      puts "record already exists"
+      return
+    end
+    result, error=logger.add_record_to_rsyslog
+    if result
+      puts "syslog updated!"
+    else
+      puts "error #{error}" if !error.nil?
+      puts "not updated"
+    end
+  end
+
+  ##  run_pci_dss_check - run pci dss check on the service keys
+  # service_setup_data - hash of the service file
+  # aws_setup_information - hash of aws-data.json file
   def self.run_pci_dss_check(service_setup_data,aws_setup_information)
     if service_setup_data[:pci_dss]
       Helpers.log "checking psi dss settings"

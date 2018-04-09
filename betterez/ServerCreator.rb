@@ -119,6 +119,8 @@ class ServerCreator
                     notify(instance.update_build_number(service_setup_data[:build_number]))
                     notify('updating init file...')
                     notify("done with #{instance.update_init_file_and_restart service_setup_data}")
+                    notify('updating logger config...')
+                    notify("done with #{instance.update_logger_config service_setup_data}")
                     boundery = 0
                     until instance.is_service_healthy?(service_setup_data)
                         notify 'waiting for service to be up'
