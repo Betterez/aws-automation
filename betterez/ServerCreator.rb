@@ -39,6 +39,9 @@ class ServerCreator
         else
             notify('fail to create servers')
         end
+        servers.each do |instance|
+          notify("done with #{instance.update_logger_config service_setup_data}")
+        end
         servers
     end
 
