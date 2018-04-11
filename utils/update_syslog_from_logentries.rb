@@ -40,11 +40,14 @@ end
 # end
 instance_services=[]
 aws_instances.each do |instance|
-  instance_services.push(instance.get_tag_by_name("Repository"))
+  if !instance.get_tag_by_name("Repository").nil?&&instance.get_tag_by_name("Repository").strip!=""
+    instance_services.push(instance.get_tag_by_name("Repository"))
+  end
   logger=Syslogger.new(instance,driver,instance.get_tag_by_name("Repository"))
   puts logger.add_record_to_rsyslog
 end
-# Helpers.log("Done listing active services in #{environment}")
+
+Helpers.log("Done listing active services in #{environment}")
 # service_json_to_create=[]
 # instance_services.each do |instance_service|
 #   next if instance_service.nil? or instance_service.strip==""
