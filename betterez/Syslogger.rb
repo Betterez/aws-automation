@@ -21,8 +21,8 @@ class Syslogger
       return false,code
     end
     return false ,"record already exists!" if check_record_exists
-    return false,"no logentries token found" if !data.has_key?("logentries_token")
-    footer="'$template Logentries,\"#{data['logentries_token']} %HOSTNAME% %syslogtag%%msg%\"\n *.* @@data.logentries.com:80;Logentries'"
+    return false,"no logentries token found" if !data.has_key?("logentries_syslog_token")
+    footer="'$template Logentries,\"#{data['logentries_syslog_token']} %HOSTNAME% %syslogtag%%msg%\"\n *.* @@data.logentries.com:80;Logentries'"
     result=@aws_instance.run_ssh_command("echo #{footer} | sudo tee --append /etc/rsyslog.conf")
     if check_record_exists
       @aws_instance.run_ssh_command("sudo service rsyslog restart")
