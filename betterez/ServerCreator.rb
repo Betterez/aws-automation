@@ -46,7 +46,12 @@ class ServerCreator
     end
 
     def create_servers_from_parameters(service_setup_data)
-        throw "healthcheck doesn't match" if check_service_setup_healthcheck(service_setup_data)==false
+        if check_service_setup_healthcheck(service_setup_data)==false
+          puts ""
+          puts "WARNING healthcheck may fail deployment - lb and service file discrepancy"
+          puts "WARNING healthcheck #{service_setup_data["deployment"]["healthcheck"]["command"]} no responding to #{ELBClient.get_lb_healthcheck(service_setup_data)}"
+          puts ""
+        end
         update_service_setup_data(service_setup_data)
         servers = create_instances_from_parameters(service_setup_data)
         throw 'error creating servers' if servers.nil? || servers.empty?
