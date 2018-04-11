@@ -24,6 +24,7 @@ class Syslogger
     return false,"No repository value" if service_name.nil?||service_name.strip==""
 
     data, code = @vault_driver.get_json("secret/#{service_name}")
+    return false,"no data for repository #{service_name}" if data.nil? ||data.strip==""
     return false, code if code > 399
     return false, 'record already exists!' if check_record_exists(aws_instance)
     return false, 'no logentries token found' unless data.key?('RSYSLOG_STRING')
@@ -53,8 +54,6 @@ class Syslogger
       if !instance.get_tag_by_name('Repository').nil? && instance.get_tag_by_name('Repository').strip != ''
         instance_services[instance.get_tag_by_name('Repository')] = 1
       end
-      logger = Syslogger.new(instance, driver, instance.get_tag_by_name('Repository'))
-      puts logger.add_record_to_rsyslog
     end
     instance_services.keys
   end
@@ -81,9 +80,9 @@ class Syslogger
   # instance_services - array of string representing the repositories of running instances
   # vault_driver - vault driver object that is already initialized
   # return json string
-  def self.generate_service_json(instance_services,vault_driver)
+  def self.generate_service_json(instance_services,vault_driver,environment)
     service_json_to_create=[]
-    dump_data=""
+    dump_data="{"
     instance_services.each do |instance_service|
       next if instance_service.nil? or instance_service.strip==""
       data, code=vault_driver.get_json("secret/#{instance_service}")
@@ -93,25 +92,22 @@ class Syslogger
         puts "Service #{instance_service} got #{code} with #{data}, moving on..."
         next
       end
-      if data.has_key?("logentries_token")
-        puts "adding syslog to: service #{instance_service}"
-        driver.put_json_for_repo(instance_service,{RSYSLOG_STRING=>data['logentries_token']},true)
-
-      else
+      if !data.has_key?("logentries_token")
+        puts "adding #{instance_service} to required json..."
         service_hash={instance_service=>{"service_name"=>instance_service,"environments"=>[environment],"path"=>"/","use_log_entries"=>true}}
         service_json_to_create.push(service_hash)
-        puts "service #{instance_service} does not have a token!"
       end
     end
     if instance_services.length>0
       service_json_to_create.each_with_index do |service_hash,index|
-        if index==(service_json_to_create.length-1)
-          dump_data+=service_hash.to_json[1,service_hash.to_json.length]
+        if index!=(service_json_to_create.length-1)
+          dump_data+=service_hash.to_json[1,service_hash.to_json.length-2]+",\r\n"
         else
-          dump_data+="#{service_hash.to_json[0,service_hash.to_json.length-1]},\r\n"
+          dump_data+="#{service_hash.to_json[1,service_hash.to_json.length-1]}\r\n"
         end
       end
     end
+    return dump_data
   end
 
   ## check_service_eligibility - checks if this server has an entry in vault
@@ -125,5 +121,5 @@ class Syslogger
     end
   end
 
-  
+
 end
