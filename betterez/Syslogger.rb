@@ -27,8 +27,8 @@ class Syslogger
     return false,"no data for repository #{service_name}" if data.nil? ||data.strip==""
     return false, code if code > 399
     return false, 'record already exists!' if check_record_exists(aws_instance)
-    return false, 'no logentries token found' unless data.key?('RSYSLOG_STRING')
-    footer = "'$template Logentries,\"#{data['RSYSLOG_STRING']} %HOSTNAME% %syslogtag%%msg%\"\n *.* @@data.logentries.com:80;Logentries'"
+    return false, 'no logentries token found' unless data.key?(RSYSLOG_STRING)
+    footer = "'$template Logentries,\"#{data[RSYSLOG_STRING]} %HOSTNAME% %syslogtag%%msg%\"\n *.* @@data.logentries.com:80;Logentries'"
     result = aws_instance.run_ssh_command("echo #{footer} | sudo tee --append /etc/rsyslog.conf")
     if check_record_exists(aws_instance)
       aws_instance.run_ssh_command('sudo service rsyslog restart')
@@ -56,6 +56,20 @@ class Syslogger
       end
     end
     instance_services.keys
+  end
+
+  ## adjust_syslog_entry - adding syslog entry from a log entry one
+  # vault_driver - +VaultDriver+ instance
+  # service_name - +string+
+  # return +boolean+ and error
+  def self.adjust_syslog_entry(vault_driver,service_name)
+    data,err=vault_driver.get_json("secret/#{service_name}")
+    return false,err if err
+    return false, "key already exists"  if data.has_key?(RSYSLOG_STRING)
+    return false, "No log entry " if !data.has_key?("logentries_token")
+    code=vault_driver.put_json_for_repo(service_name,{RSYSLOG_STRING=>data["logentries_token"]})
+    return true,nil if code<399
+    return false,code      
   end
 
   ## get_all_repositories_servers_per_environment - returns all repo servers that has a repository value

@@ -20,6 +20,10 @@ logger=Syslogger.new(driver)
 active_servers.each do |instance|
   puts "#{instance.get_tag_by_name("Name")} - #{logger.check_record_exists(instance)}"
   eligible,err=logger.check_service_eligibility(instance.get_tag_by_name("Repository"))
+  if err
+    puts "#{err} checking server #{instance.get_tag_by_name("Name")}"
+    next
+  end
   if !eligible
     puts "not eligible for syslog, check vault."
     next
