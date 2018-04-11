@@ -24,7 +24,7 @@ class Syslogger
     return false,"No repository value" if service_name.nil?||service_name.strip==""
 
     data, code = @vault_driver.get_json("secret/#{service_name}")
-    return false,"no data for repository #{service_name}" if data.nil? ||data.strip==""
+    return false,"no data for repository #{service_name}" if data.nil? 
     return false, code if code > 399
     return false, 'record already exists!' if check_record_exists(aws_instance)
     return false, 'no logentries token found' unless data.key?(RSYSLOG_STRING)
@@ -63,13 +63,15 @@ class Syslogger
   # service_name - +string+
   # return +boolean+ and error
   def self.adjust_syslog_entry(vault_driver,service_name)
-    data,err=vault_driver.get_json("secret/#{service_name}")
-    return false,err if err
+    return false,"vault driver offline!" if !vault_driver.get_vault_status
+    data,code=vault_driver.get_json("secret/#{service_name}")
+    return false,err if code>399
+    return false,"Got nothing from vault for #{service_name}" if (data.nil?)
     return false, "key already exists"  if data.has_key?(RSYSLOG_STRING)
     return false, "No log entry " if !data.has_key?("logentries_token")
-    code=vault_driver.put_json_for_repo(service_name,{RSYSLOG_STRING=>data["logentries_token"]})
+    code=vault_driver.put_json_for_repo(service_name,{RSYSLOG_STRING=>data["logentries_token"]},true)
     return true,nil if code<399
-    return false,code      
+    return false,code
   end
 
   ## get_all_repositories_servers_per_environment - returns all repo servers that has a repository value
