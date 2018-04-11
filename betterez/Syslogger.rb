@@ -3,10 +3,14 @@ require_relative 'Notifire'
 require_relative 'VaultDriver'
 
 class Syslogger
+  RSYSLOG_STRING="logentries_syslog_token"
   def initialize(vault_driver)
     @vault_driver = vault_driver
   end
 
+  ## checks if a syslog entry exists for logentries
+  # aws_instance -and AwsInstance instances
+  # return +boolean+ true or false
   def check_record_exists(aws_instance)
     result = aws_instance.run_ssh_command('cat /etc/rsyslog.conf |grep logentries')
     return false if result.strip == ''
@@ -21,11 +25,11 @@ class Syslogger
 
     data, code = @vault_driver.get_json("secret/#{service_name}")
     return false, code if code > 399
-    return false, 'record already exists!' if check_record_exists
-    return false, 'no logentries token found' unless data.key?('logentries_syslog_token')
-    footer = "'$template Logentries,\"#{data['logentries_syslog_token']} %HOSTNAME% %syslogtag%%msg%\"\n *.* @@data.logentries.com:80;Logentries'"
+    return false, 'record already exists!' if check_record_exists(aws_instance)
+    return false, 'no logentries token found' unless data.key?('RSYSLOG_STRING')
+    footer = "'$template Logentries,\"#{data['RSYSLOG_STRING']} %HOSTNAME% %syslogtag%%msg%\"\n *.* @@data.logentries.com:80;Logentries'"
     result = aws_instance.run_ssh_command("echo #{footer} | sudo tee --append /etc/rsyslog.conf")
-    if check_record_exists
+    if check_record_exists(aws_instance)
       aws_instance.run_ssh_command('sudo service rsyslog restart')
     else
       return false, 'failed to setup command'
@@ -36,8 +40,9 @@ class Syslogger
 
   ## gets a list of active repository based on the running servers in this environment
   # environment +string+ - the environment to check
+  # aws_settings +hash+ - aws settings from settings/aws-data.json
   # return an array of strings, representing the repositories
-  def self.get_all_active_repositories_for_environment(environment)
+  def self.get_all_active_repositories_for_environment(environment,aws_settings)
     aws_instances = AwsInstance.get_instances_with_filters([
                                                              { name: 'tag:Environment', values: [environment] },
                                                              { name: 'instance-state-name', values: ['running'] }
@@ -56,8 +61,9 @@ class Syslogger
 
   ## get_all_repositories_servers_per_environment - returns all repo servers that has a repository value
   # environment +string+ - the environment to check
+  # aws_settings +hash+ - aws settings from settings/aws-data.json
   # return an array of AwsInsrtances
-  def self.get_all_repositories_servers_per_environment(environment)
+  def self.get_all_repositories_servers_per_environment(environment,aws_settings)
     instance_services=[]
     aws_instances = AwsInstance.get_instances_with_filters([
                                                              { name: 'tag:Environment', values: [environment] },
@@ -68,6 +74,7 @@ class Syslogger
         instance_services.push(instance)
       end
     end
+    instance_services
   end
 
   ## generate_service_json generage a service json file
@@ -88,7 +95,7 @@ class Syslogger
       end
       if data.has_key?("logentries_token")
         puts "adding syslog to: service #{instance_service}"
-        driver.put_json_for_repo(instance_service,{"logentries_syslog_token":data['logentries_token']},true)
+        driver.put_json_for_repo(instance_service,{RSYSLOG_STRING=>data['logentries_token']},true)
 
       else
         service_hash={instance_service=>{"service_name"=>instance_service,"environments"=>[environment],"path"=>"/","use_log_entries"=>true}}
@@ -107,4 +114,16 @@ class Syslogger
     end
   end
 
+  ## check_service_eligibility - checks if this server has an entry in vault
+  # service_name - +string+ the service name to chekc in vault.
+  # return +boolean+ and error code if present
+  def check_service_eligibility(service_name)
+    data, code = @vault_driver.get_json("secret/#{service_name}")
+    return false, code if code > 399
+    if data.has_key?(RSYSLOG_STRING)
+      return true, nil
+    end
+  end
+
+  
 end
