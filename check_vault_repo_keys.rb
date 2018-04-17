@@ -72,7 +72,7 @@ all_repos_names["repos"].keys.each do |current_repo|
   end
   if ( repo_data.has_key?("mongo_db_username") )
     if  (db_server_parameters[:mongo_server]!=nil)
-      Helpers.log "mongo info found#{repo_data}, testing insertion..."
+      Helpers.log "mongo info found, testing insertion..."
       mongo_user=repo_data["mongo_db_username"]
       mongo_password=repo_data["mongo_db_password"]
       mongo_client=Mongo::Client.new([db_server_parameters[:mongo_server]],database: db_server_parameters[:database_name],user: mongo_user,
