@@ -245,11 +245,11 @@ class AwsInstance
     driver = VaultDriver.from_secrets_file service_setup_data[:environment]
     service_name=service_setup_data['deployment']['service_name']
     logger=Syslogger.new(driver)
-    if logger.check_record_exists
+    if logger.check_record_exists(self)
       puts "record already exists"
       return
     end
-    result, error=logger.add_record_to_rsyslog
+    result, error=logger.add_record_to_rsyslog(self)
     if result
       puts "syslog updated!"
     else
