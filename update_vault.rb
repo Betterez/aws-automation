@@ -89,10 +89,10 @@ else
     else
       test_repo=vault_setup[:repo]
     end
-    data,code=driver.get_json("secret/#{test_repo}")
-    param_names.each do |param_name|
-      puts "value for #{param_name} is #{data[param_name]}"
-    end
+    # data,code=driver.get_json("secret/#{test_repo}")
+    # param_names.each do |param_name|
+    #   puts "value for #{param_name} is #{data[param_name]}"
+    # end
   end
 end
 puts "done updating"
