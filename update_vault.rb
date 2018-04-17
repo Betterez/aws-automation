@@ -40,10 +40,12 @@ if(settings[vault_setup[:env].to_sym].has_key?(:vault) == false)
 end
 
 exp=Regexp.new('([\w]+)=([\w!@#$%^&\/*\(\)\~\+\\\:.;-]+)')
+param_names=[]
 res=vault_setup[:vars].scan(exp)
 params={}
 res.each do |pair|
   params[pair[0].downcase]=pair[1]
+  param_names.push(pair[0])
 end
 if params=={}
   puts "empty params, exits"
@@ -81,6 +83,15 @@ else
         puts "Error #{results[key]} when setting #{key}"
         exit 1
       end
+    end
+    if vault_setup[:repo]=="all"
+      test_repo="betterez-app"
+    else
+      test_repo=vault_setup[:repo]
+    end
+    data,code=driver.get_json("secret/#{test_repo}")
+    param_names.each do |param_name|
+      puts "value for #{param_name} is #{data[param_name]}"
     end
   end
 end
