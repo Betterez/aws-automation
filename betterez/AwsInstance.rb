@@ -7,6 +7,7 @@ require_relative 'OssecManager'
 require_relative 'Syslogger'
 require 'net/ssh'
 require 'net/scp'
+require 'fileutils'
 
 class AwsInstance
   @@time_to_wait = 15
@@ -433,8 +434,8 @@ class AwsInstance
 
   def load_instance_code(service_setup_data)
     service_name = service_setup_data['deployment']['service_name']
-    temp_folder = 'temp/'
-    Dir.mkdir temp_folder unless Dir.exist?(temp_folder)
+    temp_folder = "temp/#{Thread.current.object_id}/"
+    FileUtils.mkdir_p temp_folder unless Dir.exist?(temp_folder)
     existing_servers = ((service_setup_data.key? :install_type) && (service_setup_data[:install_type] == :existing_servers))
     if existing_servers
       notify 'updating existing servers'
