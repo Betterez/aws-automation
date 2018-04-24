@@ -707,7 +707,7 @@ class AwsInstance
         ossec_manager = OssecManager.new @environment
       rescue StandardError
         notify "can't initialize ossec server for this environment."
-        # return
+        return nil
       end
       ossec_manager.notifire = @notifire
       result, install_data = ossec_manager.register_new_agent_with_instance(self)
