@@ -74,8 +74,8 @@ module Packer
         aws_source_ami_id=AwsInstance.get_ami_id(image_type[1]["variables"]["base_ami_name"])
       end
       packer_command = "cd #{packer_images_parameters[:packer_path]} && " \
-                       "packer build -var 'aws_access_key=#{authentication[:access_key_id]}' " \
-                       "-var 'aws_secret_key=#{authentication[:secret_access_key]}' " \
+                       "packer build -var 'access_key=#{authentication[:access_key_id]}' " \
+                       "-var 'secret_key=#{authentication[:secret_access_key]}' " \
                        "-var 'source_ami=#{aws_source_ami_id}' " \
                        "#{image_type[1]['filename']}"
       packer_file_data += packer_command
