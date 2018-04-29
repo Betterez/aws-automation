@@ -73,7 +73,7 @@ module Packer
       #loads image type from script file instead of parameter
       if image_type[1].has_key?"variables" and image_type[1]["variables"].has_key?"base_ami_name" then
         aws_source_ami_id=AwsInstance.get_ami_id(image_type[1]["variables"]["base_ami_name"])
-        puts "current ami source:#{aws_source_ami_id}"
+        puts "builder override: current ami source:#{aws_source_ami_id}"
       end
       packer_command = "cd #{packer_images_parameters[:packer_path]} && " \
                        "packer build -var 'access_key=#{authentication[:access_key_id]}' " \
