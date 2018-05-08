@@ -704,9 +704,6 @@ class AwsInstance
   def update_ossec_settings
     if is_instance_ossec_agent?
       notify "ossec instance, settings agent for #{@environment}..."
-      if @environment!="production" || @environment!="prod"
-        return nil
-      end
       begin
         ossec_manager = OssecManager.new @environment
       rescue StandardError
@@ -716,8 +713,8 @@ class AwsInstance
       ossec_manager.notifire = @notifire
       begin
         result, install_data = ossec_manager.register_new_agent_with_instance(self)
-      rescue StandardError
-        notify "#{StandardError} when installing ossec"
+      rescue => error
+        notify "#{error} when installing ossec"
       end
       if result
         notify "ossec agent installed and running #{install_data}"
