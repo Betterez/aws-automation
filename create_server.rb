@@ -51,6 +51,7 @@ raise OptionParser::MissingArgument if service_settings[:build_number].nil? || s
 raise OptionParser::MissingArgument if service_settings[:service_file].nil? || service_settings[:service_file] == ''
 machine=nil
 overrider=HashOverrider.new
+service_settings[:servers_count]=1 if service_settings[:debug]
 begin
   machine=YAML.load_file(service_settings[:service_file])
   overrider.override_hash!(machine,service_settings[:environment])
