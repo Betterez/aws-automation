@@ -673,8 +673,17 @@ class AwsInstance
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data[:build_number])
       aws_instance.update_tag_value 'Online', 'yes'
+      if service_setup_data['deployment']['healthcheck'].has_key?("path")
+        aws_instance.update_tag_value('Healtcheck-Path', service_setup_data['deployment']['healthcheck']['path'])
+      end
+      if service_setup_data['deployment']['healthcheck'].has_key?("port")
+        puts "adding port tag"
+        aws_instance.update_tag_value('Healtcheck-Port', service_setup_data['deployment']['healthcheck']['port'].to_s)
+        puts "done adding port tag"
+      end
     rescue StandardError => details
       if service_setup_data[:debug]
+        puts "error: #{details}"
         notifire.notify 1, 'not terminating after an error, debug mode'
       else
         notifire.notify 1, "error #{details}\r\nTerminating instance."
