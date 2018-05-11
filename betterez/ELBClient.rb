@@ -524,7 +524,11 @@ class ELBClient
         time_waited += wait_sleep_time
         resp = client.describe_target_health(target_group_arn: group_arn)
         resp.target_health_descriptions.each do |target_health_description|
-          healthy += 1 if stripped_id.include?(target_health_description.target.id) && (target_health_description.target_health.state == 'healthy')
+          if stripped_id.include?(target_health_description.target.id)
+            puts "checking status for #{target_health_description.target.id}:#{target_health_description.target_health.state}"
+          end
+          healthy += 1 if stripped_id.include?(target_health_description.target.id) &&
+            (target_health_description.target_health.state == 'healthy'||target_health_description.target_health.state =='unused')
         end
         healthy = 0 if healthy < stripped_id.length
         throw 'Waited too long' if time_waited >= max_time_to_wait

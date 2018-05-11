@@ -637,6 +637,7 @@ class AwsInstance
           return nil
         end
         failed_attempts = 0
+        health_check_passes=0
         while failed_attempts < maximum_attempts
           if transaction.reached_goal?
             aws_instance.terminate_instance
@@ -644,7 +645,8 @@ class AwsInstance
           end
           notifire.notify(1, "checking service health, #{failed_attempts + 1} of #{maximum_attempts}")
           results = aws_instance.is_service_healthy?(service_setup_data)
-          if results[0]
+          health_check_passes+=1  if results[0]
+          if health_check_passes>=2
             notifire.notify(1, 'service is healthy!')
             failed_attempts = 0
             break
