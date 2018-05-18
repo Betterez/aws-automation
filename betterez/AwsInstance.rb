@@ -450,6 +450,12 @@ class AwsInstance
       git_repo = service_setup_data['deployment']['source']['repo']
       notify "git: loading from #{git_repo} on branch #{branch_name} .."
       if existing_servers
+        ssh_command=" if [ -d '/home/bz-app/#{service_name}/.git' ]; then echo 'repository ok'; else echo 'not exists'; fi"
+        results=run_ssh_command ssh_command
+        puts "repository location #{results}"
+        if results=="not exists"
+          throw "bad location"
+        end
         ssh_command = "cd /home/bz-app/#{service_name} " \
                       "&& sudo -H -u bz-app bash -c 'git stash'" \
                       "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'" \
