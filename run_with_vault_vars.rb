@@ -15,6 +15,9 @@ OptionParser.new do |opts|
   opts.on("--repo REPOSITORY","repository to run against") do |argument|
     runner_options[:repo]=argument
   end
+  opts.on("--settings SETTINGS","settings folder location") do |argument|
+    runner_options[:settings]=argument
+  end
 end.parse!
 raise OptionParser::MissingArgument if (  (runner_options[:environment] == nil )||( runner_options[:environment] == "" ) )
 raise OptionParser::MissingArgument if (  (runner_options[:command] == nil )||( runner_options[:command] == "" ) )
@@ -24,7 +27,13 @@ raise OptionParser::MissingArgument if (  (runner_options[:repo] == nil )||( run
 puts "for environment #{runner_options[:environment]}"
 puts "running: #{runner_options[:command]}"
 puts "=========================="
-driver = VaultDriver.from_secrets_file(runner_options[:environment])
+secrets_file="settings/secrets.json"
+if (!runner_options[:settings].nil? )
+  runner_options[:settings]+=File::SEPARATOR if runner_options[:settings][runner_options[:settings].length-1]!=File::SEPARATOR
+  puts "using alternated file in #{runner_options[:settings]}"
+  secrets_file=runner_options[:settings]+"settings/secrets.json"
+end
+driver = VaultDriver.from_secrets_file(runner_options[:environment],secrets_file)
 vars= driver.get_system_variables_for_service(runner_options[:repo])
 Open3.popen3("#{vars} #{runner_options[:command]}") do |stdin,stdout,stderr|
   if !stderr.nil? && stderr.read!=""
