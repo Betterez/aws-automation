@@ -27,16 +27,8 @@ raise OptionParser::MissingArgument if (  (runner_options[:repo] == nil )||( run
 puts "for environment #{runner_options[:environment]}"
 puts "running: #{runner_options[:command]}"
 puts "=========================="
-setting_file="./settings/secrets.json"
-setting_file=runner_options[:settings]+"/settings/secrets.json" if !runner_options[:settings].nil?
-driver = VaultDriver.from_secrets_file(runner_options[:environment],setting_file)
+driver = VaultDriver.from_secrets_file(runner_options[:environment])
 vars= driver.get_system_variables_for_service(runner_options[:repo])
-if vars.nil? || vars==""
-  puts "no vars for #{runner_options[:repo]} in #{runner_options[:environment]}"
-  exit 0
-# else
-#   puts vars
-end
 Open3.popen3("#{vars} #{runner_options[:command]}") do |stdin,stdout,stderr|
   if !stderr.nil? && stderr.read!=""
     puts "error:#{stderr.read }"
