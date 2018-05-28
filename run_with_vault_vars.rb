@@ -36,7 +36,7 @@ end
 driver = VaultDriver.from_secrets_file(runner_options[:environment],secrets_file)
 vars= driver.get_system_variables_for_service(runner_options[:repo])
 Open3.popen3("#{vars} #{runner_options[:command]}") do |stdin,stdout,stderr|
-  if !stderr.nil? && stderr.read!=""
+  if !stderr.nil? && stderr.read.strip!=""
     puts "error:#{stderr.read }"
   else
     puts stdout.read
