@@ -40,6 +40,7 @@ Open3.popen3("#{vars} #{runner_options[:command]}") do |stdin,stdout,stderr|
     puts "error:#{stderr.read}"
     puts stdout.read
     puts "terminating with error"
+    exit 1
   else
     puts stdout.read
   end
