@@ -13,3 +13,4 @@ trans_tests/
 *.tar.gz
 tokens/
 dump/
+test-services/
