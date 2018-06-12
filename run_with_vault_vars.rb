@@ -35,13 +35,23 @@ if (!runner_options[:settings].nil? )
 end
 driver = VaultDriver.from_secrets_file(runner_options[:environment],secrets_file)
 vars= driver.get_system_variables_for_service(runner_options[:repo])
-Open3.popen3("#{vars} #{runner_options[:command]}") do |stdin,stdout,stderr|
-  if !stderr.nil? && stderr.read.strip!=""
-    puts "error:#{stderr.read}"
+if vars.strip==""
+  puts "no vars for this repo, exiting\r\n"
+  exit 1
+else
+  puts  "vars found for repo. executing command..."
+end
+run_command="#{vars} #{runner_options[:command]}"
+Open3.popen3(run_command) do |stdin,stdout,stderr,wait_thr|
+  exit_status = wait_thr.value
+  std_err_desc=stderr.read.strip
+  if !stderr.nil? && std_err_desc!="" && exit_status!=0
+    puts "error:#{std_err_desc}"
     puts stdout.read
     puts "terminating with error"
     exit 1
   else
+    puts "\r\ncompleted!\r\n\r\n"
     puts stdout.read
   end
 end
