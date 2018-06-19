@@ -13,7 +13,9 @@ Required libraries
 2. net-ssh -v 2.9.3.beta1 (in windows) or  net-ssh (unix)
 3. net-scp
 4. nokogiri
-5. rubocop - is a good choice for reformatting. not a must.
+5. mixlib-shellout
+6. redis
+7. rubocop - is a good choice for reformatting. not a must.
 
 Documentation
 -------------

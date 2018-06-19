@@ -1,7 +1,7 @@
 #!/usr/bin/ruby
 require_relative './betterez/VaultDriver'
 require 'optparse'
-require 'open3'
+require 'mixlib/shellout'
 
 runner_options={}
 OptionParser.new do |opts|
@@ -42,16 +42,20 @@ else
   puts  "vars found for repo. executing command..."
 end
 run_command="#{vars} #{runner_options[:command]}"
-Open3.popen3(run_command) do |stdin,stdout,stderr,wait_thr|
-  exit_status = wait_thr.value
-  std_err_desc=stderr.read.strip
-  if !stderr.nil? && std_err_desc!="" && exit_status!=0
-    puts "error:#{std_err_desc}"
-    puts stdout.read
-    puts "terminating with error"
-    exit 1
-  else
-    puts "\r\ncompleted!\r\n\r\n"
-    puts stdout.read
-  end
-end
+so = Mixlib::ShellOut.new(run_command)
+so.live_stream = $stdout
+so.run_command
+out = so.stdout
+# Open3.popen3(run_command) do |stdin,stdout,stderr,wait_thr|
+#   exit_status = wait_thr.value
+#   std_err_desc=stderr.read.strip
+#   if !stderr.nil? && std_err_desc!="" && exit_status!=0
+#     puts "error:#{std_err_desc}"
+#     puts stdout.read
+#     puts "terminating with error"
+#     exit 1
+#   else
+#     puts "\r\ncompleted!\r\n\r\n"
+#     puts stdout.read
+#   end
+# end
