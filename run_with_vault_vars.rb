@@ -4,6 +4,7 @@ require 'optparse'
 require 'mixlib/shellout'
 
 runner_options={}
+STDOUT.sync = true
 OptionParser.new do |opts|
   opts.banner="usage #{__FILE__} [options]"
   opts.on("--env ENVIRONMENT","environment type - staging,sandbox,production") do |argument|
