@@ -32,6 +32,7 @@ class AwsInstance
   # * +instance+ instance from amazon.
   # * +aws_setup_information+ hashed aws_setup_information.
   def initialize(instance, aws_setup_information)
+    STDOUT.sync = true
     throw "can't create an instance without setup data" if aws_setup_information.nil?
     @aws_setup_information = aws_setup_information
     @aws_instance_data = instance

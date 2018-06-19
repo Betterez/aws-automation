@@ -15,6 +15,7 @@ if secrets
     settings[key][:secrets]=secrets[key]
   end
 end
+STDOUT.sync = true
 service_settings = { build_number: "0",branch_name: "master",service_file: "service.yml",dont_push_to_lb: false,debug: false}
 force_create = false
 OptionParser.new do |opts|
