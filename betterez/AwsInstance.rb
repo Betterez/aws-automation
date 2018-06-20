@@ -241,6 +241,29 @@ class AwsInstance
     result
   end
 
+## runs ssh command and streams the output to stdout
+  def run_ssh_in_terminal(command)
+    Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
+      signal=ssh.open_channel do|channel|
+        channel.send_channel_request 'shell' do |ch, success|
+          if success
+            puts 'user shell started successfully'
+          else
+            puts 'could not start user shell'
+          end
+        end
+        channel.on_data do |term,data|
+          puts data
+        end
+        channel.request_pty do |channel, data|
+          channel.send_data("#{command}\n")
+          channel.send_data("exit\n")
+        end
+      end
+    signal.wait
+    end
+  end
+
   ## update_logger_config
   # update logger config data for log entries if exists in vault
   def update_logger_config(service_setup_data)
@@ -522,10 +545,11 @@ class AwsInstance
         next if command == ''
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        log_output = run_ssh_command ssh_command
-        Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
-        logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
-        logger.write(log_output)
+        run_ssh_in_terminal(ssh_command)
+        #run_ssh_command(ssh_command)
+        # Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
+        # logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
+        # logger.write(log_output)
       end
     else
       notify 'nothing to install...'
