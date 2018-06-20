@@ -5,6 +5,8 @@ require_relative 'Transaction'
 require_relative 'ServiceInstaller'
 require_relative 'OssecManager'
 require_relative 'Syslogger'
+require 'rubygems'
+require 'pty'
 require 'net/ssh'
 require 'net/scp'
 require 'fileutils'
@@ -253,6 +255,7 @@ class AwsInstance
           end
         end
         channel.on_data do |term,data|
+          STDOUT.sync = true
           puts data
         end
         channel.request_pty do |channel, data|
