@@ -547,10 +547,6 @@ class AwsInstance
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
         run_ssh_in_terminal(ssh_command)
-        # run_ssh_command(ssh_command)
-        # Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
-        # logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
-        # logger.write(log_output)
       end
     elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
       notify 'fast installing....'
@@ -559,9 +555,6 @@ class AwsInstance
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
         run_ssh_command(ssh_command)
-        # Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
-        # logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
-        # logger.write(log_output)
       end
     else
       notify 'nothing to install...'
