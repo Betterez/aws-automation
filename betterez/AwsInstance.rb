@@ -243,27 +243,27 @@ class AwsInstance
     result
   end
 
-## runs ssh command and streams the output to stdout
+  ## runs ssh command and streams the output to stdout
   def run_ssh_in_terminal(command)
     Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
-      signal=ssh.open_channel do|channel|
-        channel.send_channel_request 'shell' do |ch, success|
+      signal = ssh.open_channel do |channel|
+        channel.send_channel_request 'shell' do |_ch, success|
           if success
             puts 'user shell started successfully'
           else
             puts 'could not start user shell'
           end
         end
-        channel.on_data do |term,data|
+        channel.on_data do |_term, data|
           STDOUT.sync = true
           puts data
         end
-        channel.request_pty do |channel, data|
+        channel.request_pty do |channel, _data|
           channel.send_data("#{command}\n")
           channel.send_data("exit\n")
         end
       end
-    signal.wait
+      signal.wait
     end
   end
 
@@ -271,31 +271,31 @@ class AwsInstance
   # update logger config data for log entries if exists in vault
   def update_logger_config(service_setup_data)
     driver = VaultDriver.from_secrets_file service_setup_data[:environment]
-    service_name=service_setup_data['deployment']['service_name']
-    logger=Syslogger.new(driver)
+    service_name = service_setup_data['deployment']['service_name']
+    logger = Syslogger.new(driver)
     if logger.check_record_exists(self)
-      puts "record already exists"
+      puts 'record already exists'
       return
     end
-    result, error=logger.add_record_to_rsyslog(self)
+    result, error = logger.add_record_to_rsyslog(self)
     if result
-      puts "syslog updated!"
+      puts 'syslog updated!'
     else
-      puts "error #{error}" if !error.nil?
-      puts "not updated"
+      puts "error #{error}" unless error.nil?
+      puts 'not updated'
     end
   end
 
   ##  run_pci_dss_check - run pci dss check on the service keys
   # service_setup_data - hash of the service file
   # aws_setup_information - hash of aws-data.json file
-  def self.run_pci_dss_check(service_setup_data,aws_setup_information)
+  def self.run_pci_dss_check(service_setup_data, aws_setup_information)
     if service_setup_data[:pci_dss]
-      Helpers.log "checking psi dss settings"
+      Helpers.log 'checking psi dss settings'
       Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
       driver = VaultDriver.from_secrets_file service_setup_data[:environment]
       if aws_setup_information.key?(:secrets)
-        puts "vault required."
+        puts 'vault required.'
         puts 'vault unlocked' if driver.unlock_vault(aws_setup_information[:secrets][:vault][:keys]) == 200
       else
         puts 'no vault secrets file.'
@@ -306,8 +306,8 @@ class AwsInstance
       checker.get_all_aws_keys
       Helpers.log 'loading aws keys done'
       Helpers.log "checking security settings for service #{service_setup_data['deployment']['service_name']}"
-      ok,error=checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver)
-      throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" if (!error.nil?)
+      ok, error = checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver)
+      throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" unless error.nil?
     end
   end
 
@@ -395,7 +395,7 @@ class AwsInstance
         instances_data << { infra_data: infra_data, ami_id: ami_id }
       end
     end
-    self.run_pci_dss_check(service_setup_data,aws_setup_information)
+    run_pci_dss_check(service_setup_data, aws_setup_information)
     transaction = Transaction.new service_setup_data[:servers_count]
     limiter = Random.new
     instances_data.each do |instance_data|
@@ -477,12 +477,10 @@ class AwsInstance
       git_repo = service_setup_data['deployment']['source']['repo']
       notify "git: loading from #{git_repo} on branch #{branch_name} .."
       if existing_servers
-        ssh_command=" if [ -d '/home/bz-app/#{service_name}/.git' ]; then echo 'repository ok'; else echo 'not exists'; fi"
-        results=run_ssh_command ssh_command
+        ssh_command = " if [ -d '/home/bz-app/#{service_name}/.git' ]; then echo 'repository ok'; else echo 'not exists'; fi"
+        results = run_ssh_command ssh_command
         puts "repository location #{results}"
-        if results=="not exists"
-          throw "bad location"
-        end
+        throw 'bad location' if results == 'not exists'
         ssh_command = "cd /home/bz-app/#{service_name} " \
                       "&& sudo -H -u bz-app bash -c 'git stash'" \
                       "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'" \
@@ -549,7 +547,18 @@ class AwsInstance
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
         run_ssh_in_terminal(ssh_command)
-        #run_ssh_command(ssh_command)
+        # run_ssh_command(ssh_command)
+        # Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
+        # logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
+        # logger.write(log_output)
+      end
+    elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
+      notify 'fast installing....'
+      service_setup_data['machine']['fast_install'].each do |command|
+        next if command == ''
+        notify "running #{command}"
+        ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
+        run_ssh_command(ssh_command)
         # Dir.mkdir('logs', 0o777) unless Dir.exist?('logs')
         # logger = File.open("logs/#{Thread.current.object_id}_#{Helpers.create_time_date_string}.log", 'w')
         # logger.write(log_output)
@@ -671,7 +680,7 @@ class AwsInstance
           return nil
         end
         failed_attempts = 0
-        health_check_passes=0
+        health_check_passes = 0
         while failed_attempts < maximum_attempts
           if transaction.reached_goal?
             aws_instance.terminate_instance
@@ -679,8 +688,8 @@ class AwsInstance
           end
           notifire.notify(1, "checking service health, #{failed_attempts + 1} of #{maximum_attempts}")
           results = aws_instance.is_service_healthy?(service_setup_data)
-          health_check_passes+=1  if results[0]
-          if health_check_passes>=2
+          health_check_passes += 1 if results[0]
+          if health_check_passes >= 2
             notifire.notify(1, 'service is healthy!')
             failed_attempts = 0
             break
@@ -709,13 +718,13 @@ class AwsInstance
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data[:build_number])
       aws_instance.update_tag_value 'Online', 'yes'
-      if service_setup_data['deployment']['healthcheck'].has_key?("path")
+      if service_setup_data['deployment']['healthcheck'].key?('path')
         aws_instance.update_tag_value('Healtcheck-Path', service_setup_data['deployment']['healthcheck']['path'])
       end
-      if service_setup_data['deployment']['healthcheck'].has_key?("port")
-        puts "adding port tag"
+      if service_setup_data['deployment']['healthcheck'].key?('port')
+        puts 'adding port tag'
         aws_instance.update_tag_value('Healtcheck-Port', service_setup_data['deployment']['healthcheck']['port'].to_s)
-        puts "done adding port tag"
+        puts 'done adding port tag'
       end
     rescue StandardError => details
       if service_setup_data[:debug]
@@ -758,7 +767,7 @@ class AwsInstance
       ossec_manager.notifire = @notifire
       begin
         result, install_data = ossec_manager.register_new_agent_with_instance(self)
-      rescue => error
+      rescue StandardError => error
         notify "#{error} when installing ossec"
       end
       if result
