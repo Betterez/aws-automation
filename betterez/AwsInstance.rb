@@ -405,7 +405,12 @@ class AwsInstance
         aws_instances << aws_instance unless aws_instance.nil?
       end
     end
-    instance_threads.each(&:join)
+    keep_waiting=true
+    while (all_thread_wait<80&& keep_waiting)   #80*15=20m
+      sleep(15)
+      if service_setup_data[:servers_count]>=aws_instances.length
+      end
+    end
     if aws_instances.length < service_setup_data[:servers_count]
       if service_setup_data[:debug]
         notifire.notify 1, 'keeping failed servers, debug'
