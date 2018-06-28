@@ -1,4 +1,4 @@
-class InstanceManager
+class InstancesManager
   def initialize
     @instances = {}
     @mutex = Mutex.new
@@ -19,8 +19,8 @@ class InstanceManager
   def get_instances_with_status(status)
     result = []
     @instances.keys.each do |key|
-      results << key if @instances[key] == status
+      result << key if @instances[key] == status
     end
-    results
+    result
    end
 end
