@@ -1,7 +1,9 @@
 require_relative '../../betterez/VaultDriver'
 class AwsInstanceMock
+  attr_reader(:status)
   def initialize
     @instance_id=VaultDriver.generate_uid
+    @status="ready"
     puts "creating new mock instance #{@instance_id}"
   end
   def run_ssh_command command
@@ -20,5 +22,6 @@ class AwsInstanceMock
   end
   def terminate_instance
     puts "terminating instance #{@instance_id}"
+    @status="terminated"
   end
 end
