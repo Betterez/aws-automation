@@ -410,10 +410,10 @@ class AwsInstance
 
     while all_thread_wait<80 && keep_waiting do
       sleep(15)
-      # if (service_setup_data[:servers_count]>=aws_instances.length)
-      #   keep_waiting=false
-      # end
-      # all_thread_wait++
+      if (service_setup_data[:servers_count]>=aws_instances.length)
+        keep_waiting=false
+      end
+      all_thread_wait+=1
     end
 
     if aws_instances.length < service_setup_data[:servers_count]
