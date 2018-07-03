@@ -407,12 +407,15 @@ class AwsInstance
     end
     keep_waiting=true
     all_thread_wait=0
-    while (all_thread_wait<80&& keep_waiting)   #80*15=20m
+
+    while all_thread_wait<80 && keep_waiting do
       sleep(15)
-      if service_setup_data[:servers_count]>=aws_instances.length
-      end
-      all_thread_wait++
+      # if (service_setup_data[:servers_count]>=aws_instances.length)
+      #   keep_waiting=false
+      # end
+      # all_thread_wait++
     end
+
     if aws_instances.length < service_setup_data[:servers_count]
       if service_setup_data[:debug]
         notifire.notify 1, 'keeping failed servers, debug'

@@ -39,10 +39,10 @@ class InstancesManager
   end
   def delete_and_terminate_instances_with_status(status)
     @mutex.synchronize{
-      @instances.each do |instance_data|
-        if instance_data[:status]==status
-          instance_data[:instance].terminate_instance
-          @instances.delete[instance_data[:instance].get_aws_id]
+      @instances.keys.each do |key|
+        if @instances[key][:status]==status
+          @instances[key][:instance].terminate_instance
+          @instances.delete(key)
         end
       end
     }

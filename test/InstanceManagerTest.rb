@@ -60,6 +60,7 @@ class InstanceManagerTest < Test::Unit::TestCase
     instance2=AwsInstanceMock.new
     mgr.add_instance(instance2)
     assert(mgr.get_instances_with_status("initial").length==1)
+    
     mgr.delete_and_terminate_instances_with_status("initial")
     assert(mgr.get_instances_with_status("initial").length==0)
   end
