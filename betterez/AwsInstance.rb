@@ -5,6 +5,7 @@ require_relative 'Transaction'
 require_relative 'ServiceInstaller'
 require_relative 'OssecManager'
 require_relative 'Syslogger'
+require_relative 'InstancesManager'
 require 'rubygems'
 require 'pty'
 require 'net/ssh'
@@ -361,9 +362,10 @@ class AwsInstance
   # * +service_setup_data+ - service specific data
   # * +aws_setup_information+ - environment and keys data
   def self.create_aws_instances(service_setup_data, aws_setup_information, notifire)
-    aws_instances = []
     instance_threads = []
     instances_data = []
+    instances_manager=InstancesManager.new
+
     notifire.notify(1, 'getting ami id')
     total_servers_number = if service_setup_data[:debug]
                              1
@@ -401,46 +403,46 @@ class AwsInstance
     instances_data.each do |instance_data|
       sleep ( 0.1 + limiter.rand(2000) / 100)
       instance_threads << Thread.new do
-        aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction)
-        aws_instances << aws_instance unless aws_instance.nil?
+        aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction,instances_manager)
+
       end
     end
     keep_waiting=true
     all_thread_wait=0
 
-    while all_thread_wait<80 && keep_waiting do
+    while (all_thread_wait<80 && keep_waiting == true) do
       sleep(15)
-      if (service_setup_data[:servers_count]>=aws_instances.length)
+      if (service_setup_data[:servers_count]>=instances_manager.get_instances_with_status("ready").length)
         keep_waiting=false
       end
       all_thread_wait+=1
     end
+    instance_threads.each do |current_thread|
+      current_thread.kill
+    end
 
-    if aws_instances.length < service_setup_data[:servers_count]
+    if instances_manager.get_instances_with_status("ready").length < service_setup_data[:servers_count]
       if service_setup_data[:debug]
         notifire.notify 1, 'keeping failed servers, debug'
       else
         notifire.notify 1, 'created servers are below require number, terminating.'
-        aws_instances.each(&:terminate_instance)
+        instances_manager.delete_and_terminate_all_instances
       end
-      aws_instances = []
     end
-    if aws_instances.length > service_setup_data[:servers_count]
-      notifire.notify 1, 'terminating servers under number'
-      termination_candidates = aws_instances.length - service_setup_data[:servers_count]
-      (0...termination_candidates).each do
-        aws_instances[0].terminate_instance
-      end
-      aws_instances.slice!(0, termination_candidates)
+
+    if instances_manager.get_instances_with_status("ready").length > service_setup_data[:servers_count]
+      notifire.notify 1, 'terminating spare servers'
+      instances_manager.delete_and_terminate_instances_with_status("initial")
+      instances_manager.limit_number_of_instances_with_status("ready",service_setup_data[:servers_count])
     end
     # remove cloudwatch cache.
     # set ossec
-    aws_instances.each do |instance|
+    instances_manager.get_instances_with_status("ready").each do |instance|
       instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
       instance.update_ossec_settings
     end
     notifire.notify 1, 'done'
-    aws_instances
+    instances_manager.get_instances_with_status("ready")
   end
 
   ## checks if this instance has ossec agent on it
@@ -578,7 +580,7 @@ class AwsInstance
   # * +instance_setup_data+ - instance data and other
   # * +notifire+ - notifire interface
   # * +transaction+ - instance thread transactio data
-  def self.create_service_instance(service_setup_data, aws_setup_information, notifire, instance_setup_data, transaction)
+  def self.create_service_instance(service_setup_data, aws_setup_information, notifire, instance_setup_data, transaction,instances_manager)
     client = Helpers.create_aws_ec2_client
     failed_attempts = 0
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
@@ -634,6 +636,7 @@ class AwsInstance
                                      instance_ids: [instance_data.instance_id])
     instance_data = resp.reservations[0].instances[0]
     aws_instance = AwsInstance.new(instance_data, aws_setup_information)
+    instances_manager.add_instance(aws_instance)
     aws_instance.notifire = notifire
     failed_attempts = 0
     maximum_attempts = 14
@@ -741,6 +744,7 @@ class AwsInstance
     end
     notifire.notify(1, 'instance created!')
     transaction.increase!
+    instances_manager.update_instance_status(instance,"ready")
     notifire.notify(1, 'leaving aws creator')
     aws_instance
   end

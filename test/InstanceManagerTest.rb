@@ -60,9 +60,37 @@ class InstanceManagerTest < Test::Unit::TestCase
     instance2=AwsInstanceMock.new
     mgr.add_instance(instance2)
     assert(mgr.get_instances_with_status("initial").length==1)
-    
     mgr.delete_and_terminate_instances_with_status("initial")
     assert(mgr.get_instances_with_status("initial").length==0)
+  end
+
+  def test_remove_instances_by_status
+    mgr = InstancesManager.new
+    instances = []
+    (0..4).each do |number|
+      instances << AwsInstanceMock.new
+      mgr.add_instance(instances[number])
+    end
+    assert(mgr.get_all_instances_number==5)
+    mgr.update_instance_status(instances[0],"ready")
+    mgr.delete_instances_with_status("initial")
+    assert(mgr.get_all_instances_number==1)
+  end
+
+  def test_terminate_and_delete_all
+    mgr = InstancesManager.new
+    instances = []
+    (0..4).each do |number|
+      instances << AwsInstanceMock.new
+      mgr.add_instance(instances[number])
+    end
+    assert(mgr.get_all_instances_number==5)
+    mgr.update_instance_status(instances[0],"ready")
+    mgr.update_instance_status(instances[1],"ready")
+    assert(mgr.get_instances_with_status("ready").length==2)
+    mgr.delete_and_terminate_all_instances
+    assert(mgr.get_instances_with_status("ready").length==0)
+    assert(mgr.get_all_instances_number==0)
   end
 
 end

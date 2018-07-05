@@ -48,4 +48,35 @@ class InstancesManager
     }
   end
 
+  def limit_number_of_instances_with_status(status,limit)
+    instances_number=1
+    @mutex.synchronize{
+      @instances.keys.each do |key|
+        if @instances[key][:status]==status && instances_number>limit
+          @instances[key][:instance].terminate_instance
+          @instances.delete(key)
+        else
+          instances_number+=1
+        end
+      end
+    }
+  end
+
+  def get_all_instances_number
+    result=0
+    @mutex.synchronize{
+      result=@instances.length
+    }
+    result
+  end
+
+  def delete_and_terminate_all_instances
+    @mutex.synchronize{
+      @instances.keys.each do |key|
+        @instances[key][:instance].terminate_instance
+        @instances.delete(key)
+      end
+    }
+  end
+
 end
