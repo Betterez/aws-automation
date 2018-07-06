@@ -404,24 +404,29 @@ class AwsInstance
       sleep ( 0.1 + limiter.rand(2000) / 100)
       instance_threads << Thread.new do
         aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction,instances_manager)
-
       end
     end
     keep_waiting=true
     all_thread_wait=0
 
     while (all_thread_wait<80 && keep_waiting == true) do
-      sleep(15)
-      if (service_setup_data[:servers_count]>=instances_manager.get_instances_with_status("ready").length)
+      if (service_setup_data[:servers_count]<=instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length)
         keep_waiting=false
       end
       all_thread_wait+=1
+      sleep 15
+      puts ""
+      puts "..:: polling number #{all_thread_wait},keep_waiting=#{keep_waiting}, ready servers:#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} ::.."
+      puts ""
     end
+    puts ""
+    puts "..:: done waiting: all_thread_wait:#{all_thread_wait}, keep_waiting=#{keep_waiting} ::.."
+    puts ""
     instance_threads.each do |current_thread|
       current_thread.kill
     end
 
-    if instances_manager.get_instances_with_status("ready").length < service_setup_data[:servers_count]
+    if instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length < service_setup_data[:servers_count]
       if service_setup_data[:debug]
         notifire.notify 1, 'keeping failed servers, debug'
       else
@@ -430,19 +435,19 @@ class AwsInstance
       end
     end
 
-    if instances_manager.get_instances_with_status("ready").length > service_setup_data[:servers_count]
+    if instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length > service_setup_data[:servers_count]
       notifire.notify 1, 'terminating spare servers'
-      instances_manager.delete_and_terminate_instances_with_status("initial")
-      instances_manager.limit_number_of_instances_with_status("ready",service_setup_data[:servers_count])
+      instances_manager.limit_number_of_instances_with_status(InstancesManager::READY_STATUS,service_setup_data[:servers_count])
     end
+    instances_manager.delete_and_terminate_instances_with_status("initial")
     # remove cloudwatch cache.
     # set ossec
-    instances_manager.get_instances_with_status("ready").each do |instance|
+    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
       instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
       instance.update_ossec_settings
     end
     notifire.notify 1, 'done'
-    instances_manager.get_instances_with_status("ready")
+    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
   end
 
   ## checks if this instance has ossec agent on it
@@ -744,7 +749,7 @@ class AwsInstance
     end
     notifire.notify(1, 'instance created!')
     transaction.increase!
-    instances_manager.update_instance_status(instance,"ready")
+    instances_manager.update_instance_status(aws_instance,InstancesManager::READY_STATUS)
     notifire.notify(1, 'leaving aws creator')
     aws_instance
   end

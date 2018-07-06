@@ -1,18 +1,21 @@
 require_relative  'AwsInstance'
 
 class InstancesManager
+  INITIAL_STATUS="initial"
+  READY_STATUS="ready"
   def initialize
     @instances = {}
     @mutex = Mutex.new
   end
 
-  def add_instance(instance, status = 'initial')
+  def add_instance(instance, status =InstancesManager::INITIAL_STATUS )
     @mutex.synchronize do
       @instances[instance.get_aws_id] = {status: status,instance: instance}
     end
   end
 
   def update_instance_status(instance, status)
+    throw "instance is nil" if instance==nil
     @mutex.synchronize do
       if @instances.has_key?(instance.get_aws_id)
         @instances[instance.get_aws_id][:status] = status
