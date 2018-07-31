@@ -364,7 +364,7 @@ class AwsInstance
   def self.create_aws_instances(service_setup_data, aws_setup_information, notifire)
     instance_threads = []
     instances_data = []
-    instances_manager=InstancesManager.new
+    instances_manager = InstancesManager.new
 
     notifire.notify(1, 'getting ami id')
     total_servers_number = if service_setup_data[:debug]
@@ -403,28 +403,26 @@ class AwsInstance
     instances_data.each do |instance_data|
       sleep ( 0.1 + limiter.rand(2000) / 100)
       instance_threads << Thread.new do
-        aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction,instances_manager)
+        aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction, instances_manager)
       end
     end
-    keep_waiting=true
-    all_thread_wait=0
+    keep_waiting = true
+    all_thread_wait = 0
 
-    while (all_thread_wait<80 && keep_waiting == true) do
-      if (service_setup_data[:servers_count]<=instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length)
-        keep_waiting=false
+    while all_thread_wait < 80 && keep_waiting == true
+      if service_setup_data[:servers_count] <= instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length
+        keep_waiting = false
       end
-      all_thread_wait+=1
+      all_thread_wait += 1
       sleep 15
-      puts ""
+      puts ''
       puts "..:: polling number #{all_thread_wait},keep_waiting=#{keep_waiting}, ready servers:#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} ::.."
-      puts ""
+      puts ''
     end
-    puts ""
+    puts ''
     puts "..:: done waiting: all_thread_wait:#{all_thread_wait}, keep_waiting=#{keep_waiting} ::.."
-    puts ""
-    instance_threads.each do |current_thread|
-      current_thread.kill
-    end
+    puts ''
+    instance_threads.each(&:kill)
 
     if instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length < service_setup_data[:servers_count]
       if service_setup_data[:debug]
@@ -437,9 +435,9 @@ class AwsInstance
 
     if instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length > service_setup_data[:servers_count]
       notifire.notify 1, 'terminating spare servers'
-      instances_manager.limit_number_of_instances_with_status(InstancesManager::READY_STATUS,service_setup_data[:servers_count])
+      instances_manager.limit_number_of_instances_with_status(InstancesManager::READY_STATUS, service_setup_data[:servers_count])
     end
-    instances_manager.delete_and_terminate_instances_with_status("initial")
+    instances_manager.delete_and_terminate_instances_with_status('initial')
     # remove cloudwatch cache.
     # set ossec
     instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
@@ -563,7 +561,26 @@ class AwsInstance
         next if command == ''
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        run_ssh_in_terminal(ssh_command)
+        failed_command_executions = 0
+        command_done_executing = false
+        sleep_counter = 0
+        until command_done_executing
+          sleep_counter = 0
+          command_thread = Thread.new do
+            run_ssh_in_terminal(ssh_command)
+            command_done_executing = true
+          end
+          until command_done_executing
+            sleep 5
+            sleep_counter += 1
+            if sleep_counter > 96 # 8 minutes max
+              Thread.kill(command_thread)
+              break
+            end
+          end
+          failed_command_executions+=1
+          throw "command #{command} failed to execute" if failed_command_executions>3
+        end
       end
     elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
       notify 'fast installing....'
@@ -585,7 +602,7 @@ class AwsInstance
   # * +instance_setup_data+ - instance data and other
   # * +notifire+ - notifire interface
   # * +transaction+ - instance thread transactio data
-  def self.create_service_instance(service_setup_data, aws_setup_information, notifire, instance_setup_data, transaction,instances_manager)
+  def self.create_service_instance(service_setup_data, aws_setup_information, notifire, instance_setup_data, transaction, instances_manager)
     client = Helpers.create_aws_ec2_client
     failed_attempts = 0
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
@@ -749,7 +766,7 @@ class AwsInstance
     end
     notifire.notify(1, 'instance created!')
     transaction.increase!
-    instances_manager.update_instance_status(aws_instance,InstancesManager::READY_STATUS)
+    instances_manager.update_instance_status(aws_instance, InstancesManager::READY_STATUS)
     notifire.notify(1, 'leaving aws creator')
     aws_instance
   end
