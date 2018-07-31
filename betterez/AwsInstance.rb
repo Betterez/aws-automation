@@ -562,6 +562,7 @@ class AwsInstance
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
         run_queued_ssh_command(command,true)
+        #run_ssh_in_terminal(command)
       end
     elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
       notify 'fast installing....'
@@ -578,19 +579,21 @@ class AwsInstance
   end
 
   def run_queued_ssh_command(command,run_in_terminal)
+    puts "executing queued command: #{command},#{run_in_terminal}"
     failed_command_executions = 0
     command_done_executing = false
     sleep_counter = 0
     until command_done_executing
       sleep_counter = 0
       command_thread = Thread.new do
-        run_ssh_in_terminal(ssh_command)  if run_in_terminal
-        run_ssh_command(ssh_command)  if !run_in_terminal
+        run_ssh_in_terminal(command)  if run_in_terminal
+        run_ssh_command(command)  if !run_in_terminal
         command_done_executing = true
       end
       until command_done_executing
         sleep 5
         sleep_counter += 1
+        puts "clock #{sleep_counter} out of 96\r\n"
         if sleep_counter > 96 # 8 minutes max
           Thread.kill(command_thread)
           break
