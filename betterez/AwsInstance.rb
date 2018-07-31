@@ -561,8 +561,9 @@ class AwsInstance
         next if command == ''
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        run_queued_ssh_command(command,true)
-        #run_ssh_in_terminal(command)
+        run_queued_ssh_command(ssh_command,true)
+        #run_ssh_in_terminal(ssh_command)
+        #notify run_ssh_command(ssh_command)
       end
     elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
       notify 'fast installing....'
@@ -570,7 +571,7 @@ class AwsInstance
         next if command == ''
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        run_ssh_command(ssh_command)
+        run_queued_ssh_command(ssh_command,false)
       end
     else
       notify 'nothing to install...'
