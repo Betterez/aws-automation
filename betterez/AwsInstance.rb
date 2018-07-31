@@ -561,26 +561,7 @@ class AwsInstance
         next if command == ''
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        failed_command_executions = 0
-        command_done_executing = false
-        sleep_counter = 0
-        until command_done_executing
-          sleep_counter = 0
-          command_thread = Thread.new do
-            run_ssh_in_terminal(ssh_command)
-            command_done_executing = true
-          end
-          until command_done_executing
-            sleep 5
-            sleep_counter += 1
-            if sleep_counter > 96 # 8 minutes max
-              Thread.kill(command_thread)
-              break
-            end
-          end
-          failed_command_executions+=1
-          throw "command #{command} failed to execute" if failed_command_executions>3
-        end
+        run_queued_ssh_command(command,true)
       end
     elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
       notify 'fast installing....'
@@ -594,6 +575,30 @@ class AwsInstance
       notify 'nothing to install...'
     end
     notify 'service code loaded.'
+  end
+
+  def run_queued_ssh_command(command,run_in_terminal)
+    failed_command_executions = 0
+    command_done_executing = false
+    sleep_counter = 0
+    until command_done_executing
+      sleep_counter = 0
+      command_thread = Thread.new do
+        run_ssh_in_terminal(ssh_command)  if run_in_terminal
+        run_ssh_command(ssh_command)  if !run_in_terminal
+        command_done_executing = true
+      end
+      until command_done_executing
+        sleep 5
+        sleep_counter += 1
+        if sleep_counter > 96 # 8 minutes max
+          Thread.kill(command_thread)
+          break
+        end
+      end
+      failed_command_executions+=1
+      throw "command #{command} failed to execute" if failed_command_executions>3
+    end
   end
 
   ## Creates a single service instance
