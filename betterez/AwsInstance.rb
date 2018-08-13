@@ -445,7 +445,8 @@ class AwsInstance
       instance.update_ossec_settings
     end
     notifire.notify 1, 'done'
-    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
+    notifire.notify 1, "#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} servers created."
+    return instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
   end
 
   ## checks if this instance has ossec agent on it
