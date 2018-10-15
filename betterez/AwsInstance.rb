@@ -758,6 +758,8 @@ class AwsInstance
       aws_instance.update_tag_value 'Online', 'yes'
       if service_setup_data['deployment']['healthcheck'].key?('path')
         aws_instance.update_tag_value('Healtcheck-Path', service_setup_data['deployment']['healthcheck']['path'])
+      else
+        notifire.notify(1, 'no healthcheck data to set')
       end
       if service_setup_data['deployment']['healthcheck'].key?('port')
         puts 'adding port tag'
