@@ -362,6 +362,7 @@ class AwsInstance
   # * +service_setup_data+ - service specific data
   # * +aws_setup_information+ - environment and keys data
   def self.create_aws_instances(service_setup_data, aws_setup_information, notifire)
+    throw "no aws setup info" if aws_setup_information==nil
     instance_threads = []
     instances_data = []
     instances_manager = InstancesManager.new
@@ -380,6 +381,7 @@ class AwsInstance
     end
     total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
+    throw "no infrastructure data for #{service_setup_data[:environment]}"  if current_environment_data==nil
     puts "total_servers_number=#{total_servers_number}"
     if service_setup_data[:servers_count]
       current_server_index = 0
