@@ -116,7 +116,7 @@ class ServerCreator
             instances_up_to_date.each do |instance|
                 sleep ( 0.1+limiter.rand(2000)/100 )
                 instance_threads << Thread.new do
-                    if instance.is_elb_instance?
+                    if (instance.is_elb_instance? && service_setup_data[:dont_push_to_lb]==false)
                         notify 'removing from elb'
                         ELBClient.remove_instance_from_elb(instance) if service_setup_data['deployment']['elb_version'] == 1
                         ELBClient.remove_instance_from_group(instance) if service_setup_data['deployment']['elb_version'] == 2
