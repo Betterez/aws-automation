@@ -14,7 +14,7 @@ require 'fileutils'
 
 class AwsInstance
   @@time_to_wait = 15
-  MAX_THREAD_WAITING  = 80
+  MAX_THREAD_WAITING = 80
   # setting hash
   attr_accessor(:aws_setup_information)
   attr_accessor(:notifire)
@@ -109,6 +109,7 @@ class AwsInstance
   # returns +true+ if so.
   def can_health_check?
     return false if @service_type == 'worker'
+
     true
   end
 
@@ -143,8 +144,10 @@ class AwsInstance
   # +bollean+ checks if this instance ami is up to date
   def is_ami_version_up_to_date(ami_type)
     return false if @ami_id.nil?
+
     current_ami = AwsInstance.get_ami_id(ami_type)
     return true if @ami_id == current_ami
+
     false
   end
 
@@ -153,6 +156,7 @@ class AwsInstance
     if @aws_instance_data.public_ip_address
       return @aws_instance_data.public_ip_address
     end
+
     @aws_instance_data.private_ip_address
   end
 
@@ -165,6 +169,7 @@ class AwsInstance
   def is_service_healthy?(service_setup_data)
     output = ''
     return true if service_setup_data['deployment']['healthcheck']['perform'] != true
+
     begin
       notify "healthcheck with #{service_setup_data['deployment']['healthcheck']['command']}"
       output = run_ssh_command("cd /home/bz-app/#{@repository} && #{service_setup_data['deployment']['healthcheck']['command']}")
@@ -337,6 +342,7 @@ class AwsInstance
     if @service_type == 'http' && @path_name == '/' && @balancer_configuration == 'app'
       return true
     end
+
     false
   end
 
@@ -363,13 +369,13 @@ class AwsInstance
   # * +service_setup_data+ - service specific data
   # * +aws_setup_information+ - environment and keys data
   def self.create_aws_instances(service_setup_data, aws_setup_information, notifire)
-    throw "no aws setup info" if aws_setup_information==nil
+    throw 'no aws setup info' if aws_setup_information.nil?
     instance_threads = []
     instances_data = []
     instances_manager = InstancesManager.new
 
     notifire.notify(1, 'getting ami id')
-    total_servers_number = if (service_setup_data[:debug]||service_setup_data[:ami])
+    total_servers_number = if service_setup_data[:debug] || service_setup_data[:ami]
                              1
                            else
                              3
@@ -382,7 +388,7 @@ class AwsInstance
     end
     total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
-    throw "no infrastructure data for #{service_setup_data[:environment]}"  if current_environment_data==nil
+    throw "no infrastructure data for #{service_setup_data[:environment]}"  if current_environment_data.nil?
     puts "total_servers_number=#{total_servers_number}"
     if service_setup_data[:servers_count]
       current_server_index = 0
@@ -445,18 +451,18 @@ class AwsInstance
     # set ossec
     instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
       instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
-      instance.update_ossec_settings if !service_setup_data[:ami]
+      instance.update_ossec_settings unless service_setup_data[:ami]
     end
     notifire.notify 1, 'done'
     notifire.notify 1, "#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} servers created."
     if service_setup_data[:ami]
-      notifire.notify 1, "creating ami."
+      notifire.notify 1, 'creating ami.'
       instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)[0].create_ami(service_setup_data)
-      notifire.notify 1, "terminating instance."
+      notifire.notify 1, 'terminating instance.'
       instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)[0].terminate_instance
       return []
     end
-    return instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
+    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
   end
 
   ## checks if this instance has ossec agent on it
@@ -570,19 +576,21 @@ class AwsInstance
       notify 'installing....'
       service_setup_data['machine']['install'].each do |command|
         next if command == ''
+
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        run_queued_ssh_command(ssh_command,true)
-        #run_ssh_in_terminal(ssh_command)
-        #notify run_ssh_command(ssh_command)
+        run_queued_ssh_command(ssh_command, true)
+        # run_ssh_in_terminal(ssh_command)
+        # notify run_ssh_command(ssh_command)
       end
     elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
       notify 'fast installing....'
       service_setup_data['machine']['fast_install'].each do |command|
         next if command == ''
+
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
-        run_queued_ssh_command(ssh_command,false)
+        run_queued_ssh_command(ssh_command, false)
       end
     else
       notify 'nothing to install...'
@@ -590,7 +598,7 @@ class AwsInstance
     notify 'service code loaded.'
   end
 
-  def run_queued_ssh_command(command,run_in_terminal)
+  def run_queued_ssh_command(command, run_in_terminal)
     puts "executing queued command: #{command},#{run_in_terminal}"
     failed_command_executions = 0
     command_done_executing = false
@@ -598,8 +606,8 @@ class AwsInstance
     until command_done_executing
       sleep_counter = 0
       command_thread = Thread.new do
-        run_ssh_in_terminal(command)  if run_in_terminal
-        run_ssh_command(command)  if !run_in_terminal
+        run_ssh_in_terminal(command) if run_in_terminal
+        run_ssh_command(command) unless run_in_terminal
         command_done_executing = true
       end
       until command_done_executing
@@ -611,8 +619,8 @@ class AwsInstance
           break
         end
       end
-      failed_command_executions+=1
-      throw "command #{command} failed to execute" if failed_command_executions>4
+      failed_command_executions += 1
+      throw "command #{command} failed to execute" if failed_command_executions > 4
     end
   end
 
@@ -639,7 +647,7 @@ class AwsInstance
                                 security_group_ids: [instance_setup_data[:infra_data][:securityGroup]],
                                 instance_type: selected_instance_type,
                                 placement: {
-                                  availability_zone:  instance_setup_data[:infra_data][:availabilityZone],
+                                  availability_zone: instance_setup_data[:infra_data][:availabilityZone],
                                   tenancy: 'default'
                                 },
                                 monitoring: {
@@ -678,7 +686,7 @@ class AwsInstance
                                      instance_ids: [instance_data.instance_id])
     instance_data = resp.reservations[0].instances[0]
     if service_setup_data[:ami]
-      @balancer_configuration="none"
+      @balancer_configuration = 'none'
       notifire.notify 1, "This service is an ami template 'none' will be the balancer configuration."
     end
     aws_instance = AwsInstance.new(instance_data, aws_setup_information)
@@ -950,6 +958,7 @@ class AwsInstance
                                     }
                                   ])
     return nil if resp.images.length.zero?
+
     resp.images.each do |image|
       images.push(image)
     end
@@ -959,21 +968,22 @@ class AwsInstance
 
   def create_ami(service_setup_data)
     client = Helpers.create_aws_ec2_client
-    name= "#{service_setup_data[:repository]} image - "
-    resp = client.create_image({
+    name = "#{service_setup_data[:repository]} image - "
+    resp = client.create_image(
       description: "#{service_setup_data[:repository]} image - ",
       instance_id: get_aws_id,
-      name: name,
-      })
-    while true
-      resp1=client.describe_images({
-        image_ids:[resp.image_id] # TODO: check the actual format
-        })
-      break if resp1.images[0][:state]=="available"
-      puts "image not ready yet"
+      name: name
+    )
+    loop do
+      resp1 = client.describe_images(
+        image_ids: [resp.image_id] # TODO: check the actual format
+      )
+      break if resp1.images[0][:state] == 'available'
+
+      puts 'image not ready yet'
       sleep(10)
     end
-    puts "image ready."
+    puts 'image ready.'
   end
 
   alias remove_instance terminate_instance
