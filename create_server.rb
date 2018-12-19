@@ -16,7 +16,10 @@ if secrets
   end
 end
 STDOUT.sync = true
-service_settings = { build_number: "0",branch_name: "master",service_file: "service.yml",dont_push_to_lb: false,debug: false}
+service_settings = { build_number: "0",branch_name: "master",
+  service_file: "service.yml",dont_push_to_lb: false,
+  debug: false, ami: false,
+}
 force_create = false
 OptionParser.new do |opts|
     opts.banner = 'usage: create_server.rb [options]'
@@ -43,6 +46,9 @@ OptionParser.new do |opts|
     end
     opts.on('--debug', "don't create backup machines") do |_argument|
         service_settings[:debug] = true
+    end
+    opts.on('--ami', "use this as an ami base machine") do |_argument|
+        service_settings[:ami] = true
     end
 end.parse!
 
@@ -81,7 +87,10 @@ sc.notifire = Notifire.new
 sc.notifire.use_time_stamp = true
 force_create=service_settings['machine']['force_create'] if !force_create
 force_create=false if force_create.nil?
-if force_create == true
+if service_settings[:ami]
+  service_settings[:dont_push_to_lb]=true
+end
+if (force_create||service_settings[:ami]) == true
   Helpers.log "force creating servers"
     sc.create_servers_from_parameters(service_settings)
 else

@@ -14,6 +14,7 @@ require 'fileutils'
 
 class AwsInstance
   @@time_to_wait = 15
+  MAX_THREAD_WAITING  = 80
   # setting hash
   attr_accessor(:aws_setup_information)
   attr_accessor(:notifire)
@@ -368,7 +369,7 @@ class AwsInstance
     instances_manager = InstancesManager.new
 
     notifire.notify(1, 'getting ami id')
-    total_servers_number = if service_setup_data[:debug]
+    total_servers_number = if (service_setup_data[:debug]||service_setup_data[:ami])
                              1
                            else
                              3
@@ -411,7 +412,7 @@ class AwsInstance
     keep_waiting = true
     all_thread_wait = 0
 
-    while all_thread_wait < 80 && keep_waiting == true
+    while all_thread_wait < AwsInstance::MAX_THREAD_WAITING && keep_waiting == true
       if service_setup_data[:servers_count] <= instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length
         keep_waiting = false
       end
@@ -444,10 +445,17 @@ class AwsInstance
     # set ossec
     instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
       instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
-      instance.update_ossec_settings
+      instance.update_ossec_settings if !service_setup_data[:ami]
     end
     notifire.notify 1, 'done'
     notifire.notify 1, "#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} servers created."
+    if service_setup_data[:ami]
+      notifire.notify 1, "creating ami."
+      instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)[0].create_ami(service_setup_data)
+      notifire.notify 1, "terminating instance."
+      instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)[0].terminate_instance
+      return []
+    end
     return instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
   end
 
@@ -669,6 +677,10 @@ class AwsInstance
     resp = client.describe_instances(dry_run: false,
                                      instance_ids: [instance_data.instance_id])
     instance_data = resp.reservations[0].instances[0]
+    if service_setup_data[:ami]
+      @balancer_configuration="none"
+      notifire.notify 1, "This service is an ami template 'none' will be the balancer configuration."
+    end
     aws_instance = AwsInstance.new(instance_data, aws_setup_information)
     instances_manager.add_instance(aws_instance)
     aws_instance.notifire = notifire
@@ -943,6 +955,25 @@ class AwsInstance
     end
     images.sort! { |a, b| a.creation_date <=> b.creation_date }
     images[images.length - 1].image_id
+  end
+
+  def create_ami(service_setup_data)
+    client = Helpers.create_aws_ec2_client
+    name= "#{service_setup_data[:repository]} image - "
+    resp = client.create_image({
+      description: "#{service_setup_data[:repository]} image - ",
+      instance_id: get_aws_id,
+      name: name,
+      })
+    while true
+      resp1=client.describe_images({
+        image_ids:[resp.image_id] # TODO: check the actual format
+        })
+      break if resp1.images[0][:state]=="available"
+      puts "image not ready yet"
+      sleep(10)
+    end
+    puts "image ready."
   end
 
   alias remove_instance terminate_instance
