@@ -968,22 +968,33 @@ class AwsInstance
 
   def create_ami(service_setup_data)
     client = Helpers.create_aws_ec2_client
-    name = "#{service_setup_data[:repository]} image - "
+    name = "#{service_setup_data[:repo]} image - #{Helpers.create_time_date_string}"
     resp = client.create_image(
       description: "#{service_setup_data[:repository]} image - ",
       instance_id: get_aws_id,
       name: name
     )
+    print "\r\nwaiting for image to be ready"
     loop do
       resp1 = client.describe_images(
         image_ids: [resp.image_id] # TODO: check the actual format
       )
       break if resp1.images[0][:state] == 'available'
 
-      puts 'image not ready yet'
       sleep(10)
+      print '.'
     end
-    puts 'image ready.'
+    puts "\r\nimage ready, tagging"
+    client.create_tags(dry_run: false,
+                       resources: [resp.image_id],
+                       tags: [
+                         { key: 'Build-Number', value: service_setup_data[:build_number] },
+                         { key: 'Environment', value: service_setup_data[:environment] },
+                         { key: 'Repository', value: service_setup_data["deployment"]["service_name"] },
+                         { key: 'Service-Type', value: service_setup_data["deployment"]["service_type"] },
+                         { key: 'Name', value: name},
+                       ])
+    puts 'done.'
   end
 
   alias remove_instance terminate_instance
