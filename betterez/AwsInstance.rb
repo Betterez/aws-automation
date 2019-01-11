@@ -293,9 +293,6 @@ class AwsInstance
     end
   end
 
-  ##  run_pci_dss_check - run pci dss check on the service keys
-  # service_setup_data - hash of the service file
-  # aws_setup_information - hash of aws-data.json file
   def self.run_pci_dss_check(service_setup_data, aws_setup_information)
     if service_setup_data[:pci_dss]
       Helpers.log 'checking psi dss settings'

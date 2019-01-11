@@ -31,7 +31,7 @@ class VaultDriver
       throw "secret file not exist" if !File.exists? filename
       secrets=Helpers.load_json_data_to_hash filename
       throw "error loading file data" if secrets==nil
-      throw "Can't find this environment , #{environment}" if !secrets.has_key?environment.to_sym
+      throw "vault - Can't find this environment , #{environment}" if !secrets.has_key?environment.to_sym
       vault_data=secrets[environment.to_sym][:vault]
       return VaultDriver.new vault_data[:address],vault_data[:port],vault_data[:token]
     end

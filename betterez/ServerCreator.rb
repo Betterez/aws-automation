@@ -267,6 +267,9 @@ class ServerCreator
       end
     elsif service_setup_data['deployment']['elb_version'] == 2
       groups = ELBClient.filter_groups_with_tags(elb_filters)
+      if groups.empty?
+        puts "no groups found for #{elb_filters.to_json}"
+      end
       groups.each do |group|
         notify "updating group #{group.target_group_name} with #{instance_ids2}"
         ELBClient.update_group_instances(group.target_group_arn, instance_ids2)

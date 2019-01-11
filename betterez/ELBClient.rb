@@ -335,7 +335,7 @@ class ELBClient
 
   # returns an array of instances id contains within the elbs mentioned
   # * +elb_names+ - an array of strings
-  def self.list_elb_instances(elb_names)
+  def self.list_all_instances_in_elbs(elb_names)
     throw 'bad elb names parameters' if elb_names.class != Array
     return [] if elb_names.empty?
     client = Helpers.CreateELB
@@ -348,6 +348,24 @@ class ELBClient
       end
     end
     found_instances
+  end
+
+  def self.list_all_instances_in_target_groups_with_tag_filters(tag_filters)
+    client = Aws::ElasticLoadBalancingV2::Client.new(region: 'us-east-1', credentials: Helpers.create_aws_authentication_token)
+
+    instances =[]
+    target_groups = ELBClient.filter_groups_with_tags(tag_filters )
+    if target_groups.empty?
+      return instances
+    else
+      target_groups.each do |target_group|
+        resp=client.describe_target_health({target_group_arn: target_group.target_group_arn})
+        resp.target_health_descriptions.each do |target_desc|
+          instances << target_desc.target.id if target_desc.target_health=="unused"  || target_desc.target_health="healthy"
+        end
+      end
+    end
+      return instances
   end
 
   # update existing elb - remove old instances and inserting new ones

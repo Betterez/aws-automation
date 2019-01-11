@@ -45,14 +45,11 @@ class InstancesCleaner
     end
     if cleaning_options[:type] == 'app' || cleaning_options[:type] == "api"
       notify 'cheking for apps in elbs...'
-      elbs = ELBClient.filter_elb_with_tags('Environment' => cleaning_options[:environment], 'Elb-Type' => cleaning_options[:type], )
-      notify "found #{elbs.length} elbs that match:\r\n#{elbs}" if elbs.length>0
-      notify "no elb match" if elbs.length==0
-      instances_id_to_keep = ELBClient.list_elb_instances(elbs)
-      notify "found #{instances_id_to_keep.length} instances to keep in elbs."
+      instances_currently_in_target_groups = ELBClient.list_all_instances_in_target_groups_with_tag_filters({
+        'Environment' => cleaning_options[:environment], 'Elb-Type' => cleaning_options[:type], })
       trimmed_remove_list = []
       instances_to_remove.each do |removeable_instance|
-        next if instances_id_to_keep.include?(removeable_instance.aws_instance_data.instance_id)
+        next if instances_currently_in_target_groups.include?(removeable_instance.aws_instance_data.instance_id)
         trimmed_remove_list.push(removeable_instance)
       end
       instances_to_remove=trimmed_remove_list
