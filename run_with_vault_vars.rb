@@ -43,7 +43,7 @@ else
   puts  "vars found for repo. executing command..."
 end
 run_command="#{vars} #{runner_options[:command]}"
-so = Mixlib::ShellOut.new(run_command)
+so = Mixlib::ShellOut.new(run_command, :timeout => 3700)
 so.live_stream = $stdout
 so.run_command
 out = so.stdout
