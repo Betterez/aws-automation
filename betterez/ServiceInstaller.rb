@@ -50,36 +50,13 @@ class ServiceInstaller
     case service_setup_data['machine']['daemon_type']
     when 'upstart'
       @has_configuration_file = false
-      @service_code = "
-        ######### generate at #{Helpers.create_time_date_string} ##########
-        start on runlevel [2345]
-        stop on runlevel [!2345]
-        script
-        chdir /home/bz-app/[repo]/
-        exec sudo -H -u bz-app bash -c '[vault_data] [environment_variables] BUILD_NUMBER=$(cat /home/bz-app/build_number.txt) #{run_command}'
-        end script
-        respawn
-        ######################
-        "
+      generate_upstart_service_code(run_command)
       @service_file_location = "/etc/init/#{service_setup_data['deployment']['service_name']}.conf"
       @service_type = 'upstart'
       @service_code.gsub!('[environment_variables]', environment_variables)
       @service_code.gsub!('[vault_data]', vault_data)
     when 'systemd'
-      @service_code = "
-      [Unit]
-      Description=betterez service
-
-      [Service]
-      EnvironmentFile=/home/bz-app/[repo].env
-      WorkingDirectory=/home/bz-app/[repo]/
-      ExecStart=[runner_path] [runner_command]
-      User=bz-app
-      Restart=always
-
-      [Install]
-      WantedBy=multi-user.target
-      "
+      generate_systemd_service_code
       @service_type = 'systemd'
       @service_file_location = "/etc/systemd/system/#{service_setup_data['deployment']['service_name']}.service"
       @has_configuration_file = true
@@ -115,21 +92,62 @@ class ServiceInstaller
   def install_service(destination_machine)
     case @service_type
     when 'systemd'
-      destination_machine.run_ssh_command "sudo systemctl stop #{@service_setup_data['deployment']['service_name']}.service"
-      destination_machine.upload_data_to_file @service_code, "/home/ubuntu/#{@service_setup_data['deployment']['service_name']}.service"
-      destination_machine.run_ssh_command("sudo mv /home/ubuntu/#{@service_setup_data['deployment']['service_name']}.service #{@service_file_location}")
-      destination_machine.upload_data_to_file @configuration_file_content, "/home/ubuntu/#{@service_setup_data['deployment']['service_name']}.env"
-      destination_machine.run_ssh_command("sudo mv /home/ubuntu/#{@service_setup_data['deployment']['service_name']}.env #{@configuration_file_location}")
-      destination_machine.run_ssh_command('sudo chown -R bz-app:bz-app /home/bz-app/')
-
-      destination_machine.run_ssh_command 'sudo systemctl daemon-reload'
-      destination_machine.run_ssh_command "sudo systemctl start #{@service_setup_data['deployment']['service_name']}.service"
-      destination_machine.run_ssh_command "sudo systemctl enable #{@service_setup_data['deployment']['service_name']}.service"
+      create_systemd_service(destination_machine)
     when 'upstart'
-      destination_machine.upload_data_to_file @service_code, "/home/ubuntu/#{@service_setup_data['deployment']['service_name']}.conf"
-      destination_machine.run_ssh_command "sudo service #{@service_setup_data['deployment']['service_name']} stop"
-      destination_machine.run_ssh_command("sudo cp /home/ubuntu/#{@service_setup_data['deployment']['service_name']}.conf #{@service_file_location}")
-      destination_machine.run_ssh_command "sudo service #{@service_setup_data['deployment']['service_name']} start"
+      create_upstart_service(destination_machine)
     end
+  end
+
+  private
+
+  def generate_systemd_service_code
+    @service_code = "
+      [Unit]
+      Description=betterez service
+
+      [Service]
+      EnvironmentFile=/home/bz-app/[repo].env
+      WorkingDirectory=/home/bz-app/[repo]/
+      ExecStart=[runner_path] [runner_command]
+      User=bz-app
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+      "
+  end
+
+  def generate_upstart_service_code(run_command)
+    @service_code = "
+        ######### generate at #{Helpers.create_time_date_string} ##########
+        start on runlevel [2345]
+        stop on runlevel [!2345]
+        script
+        chdir /home/bz-app/[repo]/
+        exec sudo -H -u bz-app bash -c '[vault_data] [environment_variables] BUILD_NUMBER=$(cat /home/bz-app/build_number.txt) #{run_command}'
+        end script
+        respawn
+        ######################
+        "
+  end
+
+  def create_upstart_service(destination_machine)
+    destination_machine.upload_data_to_file @service_code, "/home/ubuntu/#{@service_setup_data['deployment']['service_name']}.conf"
+    destination_machine.run_ssh_command "sudo service #{@service_setup_data['deployment']['service_name']} stop"
+    destination_machine.run_ssh_command("sudo cp /home/ubuntu/#{@service_setup_data['deployment']['service_name']}.conf #{@service_file_location}")
+    destination_machine.run_ssh_command "sudo service #{@service_setup_data['deployment']['service_name']} start"
+  end
+
+  def create_systemd_service(destination_machine)
+    destination_machine.run_ssh_command "sudo systemctl stop #{@service_setup_data['deployment']['service_name']}.service"
+    destination_machine.upload_data_to_file @service_code, "/home/ubuntu/#{@service_setup_data['deployment']['service_name']}.service"
+    destination_machine.run_ssh_command("sudo mv /home/ubuntu/#{@service_setup_data['deployment']['service_name']}.service #{@service_file_location}")
+    destination_machine.upload_data_to_file @configuration_file_content, "/home/ubuntu/#{@service_setup_data['deployment']['service_name']}.env"
+    destination_machine.run_ssh_command("sudo mv /home/ubuntu/#{@service_setup_data['deployment']['service_name']}.env #{@configuration_file_location}")
+    destination_machine.run_ssh_command('sudo chown -R bz-app:bz-app /home/bz-app/')
+
+    destination_machine.run_ssh_command 'sudo systemctl daemon-reload'
+    destination_machine.run_ssh_command "sudo systemctl start #{@service_setup_data['deployment']['service_name']}.service"
+    destination_machine.run_ssh_command "sudo systemctl enable #{@service_setup_data['deployment']['service_name']}.service"
   end
 end
