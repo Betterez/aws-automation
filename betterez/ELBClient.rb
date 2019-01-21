@@ -451,7 +451,7 @@ class ELBClient
   # returns a Hash with all the Target groups found.
   def self.filter_groups_with_tags(filters)
     client = Aws::ElasticLoadBalancingV2::Client.new(region: 'us-east-1', credentials: Helpers.create_aws_authentication_token)
-    resp = client.describe_target_groups(page_size: 100)
+    resp = client.describe_target_groups(page_size: 399)
     found_groups = []
     aws_maximum_size = 20
     current_tg_index = 0

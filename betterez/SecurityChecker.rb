@@ -140,7 +140,6 @@ class SecurityChecker
         user_name: username
       )
       resp.access_key_metadata.each do |key_metadata|
-        # puts "#{key_metadata.user_name} - #{key_metadata.access_key_id}\r\n\r\n"
         next if key_metadata.access_key_id.nil?
         key_resp = iam_client.get_access_key_last_used(
           access_key_id: key_metadata.access_key_id
