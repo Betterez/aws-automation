@@ -3,7 +3,7 @@ require_relative './betterez/VaultDriver'
 require 'optparse'
 require 'mixlib/shellout'
 
-runner_options={}
+runner_options={timeout: 3700}
 STDOUT.sync = true
 OptionParser.new do |opts|
   opts.banner="usage #{__FILE__} [options]"
@@ -12,6 +12,9 @@ OptionParser.new do |opts|
   end
   opts.on("--command COMMAND","command to execute") do |argument|
     runner_options[:command]=argument
+  end
+  opts.on("--timeout TIMEOUT","tine in seconds") do |argument|
+    runner_options[:timeout]=argument
   end
   opts.on("--repo REPOSITORY","repository to run against") do |argument|
     runner_options[:repo]=argument
@@ -43,7 +46,7 @@ else
   puts  "vars found for repo. executing command..."
 end
 run_command="#{vars} #{runner_options[:command]}"
-so = Mixlib::ShellOut.new(run_command, :timeout => 3700)
+so = Mixlib::ShellOut.new(run_command, :timeout => runner_options[:timeout])
 so.live_stream = $stdout
 so.run_command
 out = so.stdout
@@ -52,5 +55,5 @@ puts""
 if command_error.nil? || command_error.length==0
   puts  "command executed successfully!"
 else
-  throw command_error 
+  throw command_error
 end
