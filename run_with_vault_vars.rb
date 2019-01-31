@@ -47,16 +47,10 @@ so = Mixlib::ShellOut.new(run_command, :timeout => 3700)
 so.live_stream = $stdout
 so.run_command
 out = so.stdout
-# Open3.popen3(run_command) do |stdin,stdout,stderr,wait_thr|
-#   exit_status = wait_thr.value
-#   std_err_desc=stderr.read.strip
-#   if !stderr.nil? && std_err_desc!="" && exit_status!=0
-#     puts "error:#{std_err_desc}"
-#     puts stdout.read
-#     puts "terminating with error"
-#     exit 1
-#   else
-#     puts "\r\ncompleted!\r\n\r\n"
-#     puts stdout.read
-#   end
-# end
+command_error=so.stderr.strip!
+puts""
+if command_error.nil? || command_error.length==0
+  puts  "command executed successfully!"
+else
+  throw command_error 
+end
