@@ -19,9 +19,9 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-fail OptionParser::MissingArgument if vault_setup[:repo].nil? || vault_setup[:repo] == ''
-fail OptionParser::MissingArgument if vault_setup[:vars].nil? || vault_setup[:vars] == ''
-fail OptionParser::MissingArgument if vault_setup[:env].nil? || vault_setup[:env] == ''
+raise OptionParser::MissingArgument if vault_setup[:repo].nil? || vault_setup[:repo] == ''
+raise OptionParser::MissingArgument if vault_setup[:vars].nil? || vault_setup[:vars] == ''
+raise OptionParser::MissingArgument if vault_setup[:env].nil? || vault_setup[:env] == ''
 
 vault_settings=settings[vault_setup[:env].to_sym][:vault]
 driver=VaultDriver.new(vault_settings[:address],vault_settings[:port],vault_settings[:token])
