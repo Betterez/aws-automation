@@ -4,7 +4,7 @@ require_relative 'betterez/VaultDriver'
 require('open3')
 require 'optparse'
 settings = Helpers.load_json_data_to_hash('settings/aws-data.json')
-vault_setup={}
+vault_setup = {}
 
 OptionParser.new do |opts|
   opts.banner = 'usage: update_vault.rb [options]'
@@ -26,12 +26,12 @@ fail OptionParser::MissingArgument if vault_setup[:env].nil? || vault_setup[:env
 vault_settings=settings[vault_setup[:env].to_sym][:vault]
 driver=VaultDriver.new(vault_settings[:address],vault_settings[:port],vault_settings[:token])
 driver.get_vault_status
-if(!driver.online)
-  puts "driver off line"
+unless  driver.online
+  puts 'driver off line'
   exit 1
 end
-code=driver.delete_value(vault_setup[:repo],vault_setup[:vars])
-if(code>399)
+code = driver.delete_value(vault_setup[:repo],vault_setup[:vars])
+if code > 399
   puts "error - #{code}"
   exit 1
 end
