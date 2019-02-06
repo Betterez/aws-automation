@@ -12,15 +12,15 @@ if !settings.has_key? location
   puts "no values for #{location}"
   exit 1
 end
-if !settings[location].has_key? :vault
-  puts "no vault value"
+unless settings[location].key? :vault
+  puts 'no vault value'
   exit 1
 end
-vault_settings=settings[location][:vault]
-driver=VaultDriver.new(vault_settings[:address],vault_settings[:port],vault_settings[:token])
+vault_settings = settings[location][:vault]
+driver = VaultDriver.new(vault_settings[:address],vault_settings[:port],vault_settings[:token])
 driver.get_vault_status
-if !driver.online
-  puts "not online"
+unless driver.online
+  puts 'not online'
   exit 1
 end
 if driver.locked
