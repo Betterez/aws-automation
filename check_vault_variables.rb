@@ -32,7 +32,7 @@ unless driver.authorized
   exit 1
 end
 data, code = driver.get_json(driver.all_repos_path)
-data['repos'].keys.each do |key|
+data['repos'].each_key do |key|
   data, code = driver.get_json("secret/#{key}")
   values = data.keys
   puts "#{key}:\r\n----------------------------"

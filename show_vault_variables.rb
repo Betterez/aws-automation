@@ -32,9 +32,9 @@ if !driver.authorized
   exit 1
 end
 data,code=driver.get_json(driver.all_repos_path)
-data["repos"].keys.each do |key|
+data["repos"].keys.each_with_index do |key,index|
   data,code=driver.get_json("secret/#{key}")
   values=data.keys
-  puts "#{key}:#{values}"
+  puts "#{index}.#{key}:#{values}\r\n\r\n"
 end
 Helpers.log "done"
