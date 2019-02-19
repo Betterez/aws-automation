@@ -65,9 +65,6 @@ class ServiceInstallerTest <Test::Unit::TestCase
     overrider.override_hash! machine,service_settings[:environment]
     service_settings.merge!(machine)
     installer=ServiceInstaller.new(service_settings,@aws_info)
-    # output_file=File.new("dumps/sandbox_service.service","w")
-    # output_file.write(installer.service_code)
-    # output_file.close
     assert(installer.service_code.include?("npm start"))
     assert(installer.service_code.include?("exec sudo -H -u bz-app bash"))
   end
