@@ -22,7 +22,7 @@ class ELBClient
       protocol: 'HTTP',
       instance_protocol: 'HTTP',
       load_balancer_port: 80,
-      instance_port:  80
+      instance_port: 80
     }
   end
 
@@ -86,7 +86,7 @@ class ELBClient
             healthy_threshold_count: 2,
             unhealthy_threshold_count: 2,
             matcher: {
-              http_code: '200', # required
+              http_code: '200' # required
             }
           }
           Helpers.log "Created tg #{tg_name}"
@@ -164,6 +164,7 @@ class ELBClient
             service[:listener_paths].each do |service_listener_path|
               priority_index += 1
               next if service[:default]
+
               Helpers.log "Adding rule '#{service_listener_path}': service: #{service[:name]}, domain: #{domain[:name]}, alb: #{kept_data[:albs][current_alb_index][:alb_data][:alb_name]}, priority:#{priority_index}"
               alb_client.create_rule(listener_arn: listener_arn, # required
                                      conditions: [ # required
@@ -176,7 +177,7 @@ class ELBClient
                                      actions: [ # required
                                        {
                                          type: 'forward', # required, accepts forward
-                                         target_group_arn: kept_data[:albs][current_alb_index][:alb_data][:services][service_index][:tg_arn], # required
+                                         target_group_arn: kept_data[:albs][current_alb_index][:alb_data][:services][service_index][:tg_arn] # required
                                        }
                                      ])
             end
@@ -259,7 +260,7 @@ class ELBClient
       instance_match = 0
       resp2.tag_descriptions.each do |current_elb_tags_data|
         current_elb_tags_data.tags.each do |current_tag_data|
-          if (tag_filters.keys.include? current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
+          if tag_filters.key?(current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
             instance_match += 1
             end
           if instance_match == tag_filters.keys.length
@@ -283,7 +284,7 @@ class ELBClient
       instance_match = 0
       resp2.tag_descriptions.each do |current_elb_tags_data|
         current_elb_tags_data.tags.each do |current_tag_data|
-          if (tag_filters.keys.include? current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
+          if tag_filters.key?(current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
             instance_match += 1
             end
           if instance_match == tag_filters.keys.length
@@ -307,7 +308,7 @@ class ELBClient
       instance_match = 0
       resp2.tag_descriptions.each do |current_elb_tags_data|
         current_elb_tags_data.tags.each do |current_tag_data|
-          if (tag_filters.keys.include? current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
+          if tag_filters.key?(current_tag_data.key) && (tag_filters[current_tag_data.key] == current_tag_data.value)
             instance_match += 1
             end
           if instance_match == tag_filters.keys.length
@@ -323,6 +324,7 @@ class ELBClient
   def self.sanitize_tg_arn(name)
     location = name.index('targetgroup')
     return nil if location.nil?
+
     name.slice(location, name.length)
   end
 
@@ -330,6 +332,7 @@ class ELBClient
     separator = 'loadbalancer/'
     location = name.index(separator)
     return nil if location.nil?
+
     name.slice(location + separator.length, name.length)
   end
 
@@ -338,6 +341,7 @@ class ELBClient
   def self.list_all_instances_in_elbs(elb_names)
     throw 'bad elb names parameters' if elb_names.class != Array
     return [] if elb_names.empty?
+
     client = Helpers.CreateELB
     found_instances = []
     client.describe_load_balancers(load_balancer_names: elb_names).load_balancer_descriptions.each do |description|
@@ -353,19 +357,20 @@ class ELBClient
   def self.list_all_instances_in_target_groups_with_tag_filters(tag_filters)
     client = Aws::ElasticLoadBalancingV2::Client.new(region: 'us-east-1', credentials: Helpers.create_aws_authentication_token)
 
-    instances =[]
-    target_groups = ELBClient.filter_groups_with_tags(tag_filters )
+    instances = []
+    target_groups = ELBClient.filter_groups_with_tags(tag_filters)
     if target_groups.empty?
       return instances
     else
       target_groups.each do |target_group|
-        resp=client.describe_target_health({target_group_arn: target_group.target_group_arn})
+        resp = client.describe_target_health(target_group_arn: target_group.target_group_arn)
         resp.target_health_descriptions.each do |target_desc|
-          instances << target_desc.target.id if target_desc.target_health=="unused"  || target_desc.target_health="healthy"
+          instances << target_desc.target.id if target_desc.target_health == 'unused' || target_desc.target_health = 'healthy'
         end
       end
     end
-      return instances
+
+    instances
   end
 
   # update existing elb - remove old instances and inserting new ones
@@ -413,6 +418,7 @@ class ELBClient
     client = Helpers.CreateELB
     elbs = ELBClient.filter_elb_with_tags('Path-Name' => aws_instance.path_name, 'Environment' => aws_instance.environment.to_s)
     return false if elbs.empty?
+
     client.deregister_instances_from_load_balancer(load_balancer_name: elbs[0],
                                                    instances: [{ instance_id: aws_instance.aws_instance_data.instance_id }])
     true
@@ -425,6 +431,7 @@ class ELBClient
     client = Helpers.CreateELB
     elbs = ELBClient.filter_elb_with_tags('Path-Name' => aws_instance.path_name, 'Environment' => aws_instance.environment.to_s)
     return if elbs.empty?
+
     client.register_instances_with_load_balancer(load_balancer_name: elbs[0],
                                                  instances: [{ instance_id: aws_instance.aws_instance_data.instance_id }])
     checks = 0
@@ -476,7 +483,7 @@ class ELBClient
       tags_resp.tag_descriptions.each do |tag_description|
         matches = 0
         tag_description.tags.each do |tag|
-          if filters.keys.include?(tag.key)
+          if filters.key?(tag.key)
             if filters[tag.key] == tag.value
               matches += 1
             else
@@ -546,7 +553,7 @@ class ELBClient
             puts "checking status for #{target_health_description.target.id}:#{target_health_description.target_health.state}"
           end
           healthy += 1 if stripped_id.include?(target_health_description.target.id) &&
-            (target_health_description.target_health.state == 'healthy'||target_health_description.target_health.state =='unused')
+                          (target_health_description.target_health.state == 'healthy' || target_health_description.target_health.state == 'unused')
         end
         healthy = 0 if healthy < stripped_id.length
         throw 'Waited too long' if time_waited >= max_time_to_wait
@@ -575,10 +582,12 @@ class ELBClient
     if service_configuration['deployment']['elb_version'] == 2
       groups = ELBClient.filter_groups_with_tags(filters)
       return '' if groups.nil? || groups.empty?
+
       return groups[0].health_check_path
     elsif service_configuration['deployment']['elb_version'] == 1 || service_configuration['deployment']['elb_version'].nil?
       elbs = ELBClient.get_elb_data_with_tags(filters)
       return '' if elbs.nil? || elbs.empty?
+
       elb_healthstring = elbs[0][:health_check][:target]
       position = elb_healthstring.index '/'
       return elb_healthstring[position..elb_healthstring.length]
@@ -611,6 +620,7 @@ class ELBClient
                name: '' }
       tags.each do |tag_info|
         next unless tag_info.resource_arn == target_group.target_group_arn
+
         tag_values = {}
         tag_info.tags.each do |tag|
           tag_values[tag.key] = tag.value if tag.value != '/'
@@ -648,11 +658,11 @@ class ELBClient
         dimensions: [
           {
             name: 'LoadBalancer', # required
-            value: alarm_information[:alb_arn][0], # required
+            value: alarm_information[:alb_arn][0] # required
           },
           {
             name: 'TargetGroup', # required
-            value: alarm_information[:tg_arn], # required
+            value: alarm_information[:tg_arn] # required
           }
         ],
         metric_name: 'UnHealthyHostCount', # required

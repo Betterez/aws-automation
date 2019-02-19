@@ -7,12 +7,12 @@ require('open3')
 require 'optparse'
 require 'yaml'
 
-settings = Helpers.load_json_data_to_hash('settings/aws-data.json')
+aws_setup_data = Helpers.load_json_data_to_hash('settings/aws-data.json')
 secrets = Helpers.load_json_data_to_hash('settings/secrets.json')
 if secrets
-  settings.keys.each do |key|
+  aws_setup_data.keys.each do |key|
     next if !secrets.key?key
-    settings[key][:secrets]=secrets[key]
+    aws_setup_data[key][:secrets]=secrets[key]
   end
 end
 STDOUT.sync = true
@@ -82,7 +82,7 @@ end
 puts "\r\n\r\nservice file loaded"
 puts "\r\n**** server will not be pushed! *****\r\n\r\n" if service_settings[:dont_push_to_lb]
 
-sc = ServerCreator.new settings
+sc = ServerCreator.new aws_setup_data
 sc.notifire = Notifire.new
 sc.notifire.use_time_stamp = true
 force_create=service_settings['machine']['force_create'] if !force_create
