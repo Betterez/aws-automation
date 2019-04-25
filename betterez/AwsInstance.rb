@@ -782,7 +782,11 @@ class AwsInstance
       end
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data[:build_number])
-      aws_instance.update_tag_value('Online','yes') if service_setup_data[:offline_mode]
+      if service_setup_data[:offline_mode]
+        aws_instance.update_tag_value('Online','no')
+      else
+        aws_instance.update_tag_value('Online','yes')
+      end
       if service_setup_data['deployment']['healthcheck'].key?('path')
         aws_instance.update_tag_value('Healtcheck-Path', service_setup_data['deployment']['healthcheck']['path'])
       else
