@@ -637,6 +637,14 @@ class AwsInstance
     selected_instance_type = current_environment_data[:instanceType] if selected_instance_type.nil?
 
     resp = client.run_instances(dry_run: false,
+                                block_device_mappings: [
+                                  {
+                                    device_name: "/dev/sda1",
+                                    ebs: {
+                                      volume_size: 100,
+                                    },
+                                  },
+                                ],
                                 image_id: instance_setup_data[:ami_id],
                                 min_count: 1,
                                 max_count: 1,
@@ -774,7 +782,11 @@ class AwsInstance
       end
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data[:build_number])
-      aws_instance.update_tag_value 'Online', 'yes'
+      if service_setup_data[:offline_mode]
+        aws_instance.update_tag_value('Online','no')
+      else
+        aws_instance.update_tag_value('Online','yes')
+      end
       if service_setup_data['deployment']['healthcheck'].key?('path')
         aws_instance.update_tag_value('Healtcheck-Path', service_setup_data['deployment']['healthcheck']['path'])
       else

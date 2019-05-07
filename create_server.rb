@@ -18,7 +18,7 @@ end
 STDOUT.sync = true
 service_settings = { build_number: "0",branch_name: "master",
   service_file: "service.yml",dont_push_to_lb: false,
-  debug: false, ami: false,
+  debug: false, ami: false,offline_mode: false
 }
 force_create = false
 OptionParser.new do |opts|
@@ -28,6 +28,9 @@ OptionParser.new do |opts|
     end
     opts.on('--build_number BUILD_NUMBER', 'external build number') do |argument|
         service_settings[:build_number] = argument
+    end
+    opts.on('--offline_mode', 'set online tag to no, to avoid reporting') do |_argument|
+        service_settings[:offline_mode] = true
     end
     opts.on('--force_create', 'always create a new server.') do |_argument|
         force_create = true
