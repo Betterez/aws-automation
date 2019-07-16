@@ -34,6 +34,10 @@ class InstancesCleaner
         name: 'tag:Service-Type', values: ['http'])
     elsif cleaning_options[:type] == 'worker'
       filters.push(name: 'tag:Service-Type', values: ['worker'])
+    elsif cleaning_options[:type] == 'webadmin'
+      filters.push(
+        { name: 'tag:Nginx-Configuration', values: ['webadmin'] },
+        name: 'tag:Service-Type', values: ['http'])  
     end
     suitable_aws_instances = AwsInstance.get_instances_with_filters(filters, @settings)
     notify "found #{suitable_aws_instances.length} instances"
@@ -43,7 +47,7 @@ class InstancesCleaner
       notify "nothing to remove."
       return 0
     end
-    if cleaning_options[:type] == 'app' || cleaning_options[:type] == "api"
+    if cleaning_options[:type] == 'app' || cleaning_options[:type] == "api" || cleaning_options[:type] == "webadmin"
       notify 'cheking for apps in elbs...'
       instances_currently_in_target_groups = ELBClient.list_all_instances_in_target_groups_with_tag_filters({
         'Environment' => cleaning_options[:environment], 'Elb-Type' => cleaning_options[:type], })
