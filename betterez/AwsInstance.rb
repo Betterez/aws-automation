@@ -477,15 +477,8 @@ class AwsInstance
 
   def update_init_file_and_restart(service_setup_data)
     throw 'nil aws_setup_information' if @aws_setup_information.nil?
-    # puts "\n\n\nservice_setup_data=#{service_setup_data}\n\n\n"
-    # puts "\n\n\naws_setup_information=#{@aws_setup_information}\n\n\n"
     service_installer = ServiceInstaller.new(service_setup_data, @aws_setup_information[service_setup_data[:environment].to_sym])
-    service_installer.install_service(self)
-    # remote_file_name = "/home/ubuntu/#{@repository}.conf"
-    # init_file_data = AwsInstance.generate_init_file(service_setup_data, @aws_setup_information, @environment.to_sym)
-    # upload_data_to_file(init_file_data[0][:script], remote_file_name)
-    # ssh_command = "sudo mv #{remote_file_name} /etc/init/#{@repository}.conf && sudo service #{@repository} restart"
-    # run_ssh_command ssh_command
+    service_installer.install_service(self)    
   end
 
   def load_instance_code(service_setup_data)
