@@ -10,6 +10,10 @@ module Packer
         Helpers.log "failed to load #{filename}"
         next
       end
+      if !filedata.has_key?('builders') || filedata['builders'][0].nil? || !filedata['builders'][0].has_key?('tags')
+        puts "#{filename} has an error and does not contain type info"
+        next
+      end
       ami_tags = filedata['builders'][0]['tags']
       ami_type = ami_tags['Type']
       ami_name= ami_tags['Name']
