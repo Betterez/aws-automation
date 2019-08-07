@@ -141,7 +141,7 @@ class AwsInstance
     filters
   end
 
-  # +bollean+ checks if this instance ami is up to date
+  # +boolean+ checks if this instance ami is up to date
   def is_ami_version_up_to_date(ami_type)
     return false if @ami_id.nil?
 
