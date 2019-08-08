@@ -30,10 +30,11 @@ class SecretsManagerTest < Test::Unit::TestCase
         end
     end
     def test_get_json
+        omit
         setup
         @manager.repository="btrz-api-loyalty"
         data,code=@manager.get_json
         assert_equal(code,200)
-        assert_equal(data.username,"loyalty_user")
+        assert_equal(data["username"],"loyalty_user")
     end
 end
