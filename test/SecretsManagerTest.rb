@@ -21,6 +21,19 @@ class SecretsManagerTest < Test::Unit::TestCase
 
     def test_setting_repository
         @manager.repository="app"
-        assert_equal(@manager.repository,"app")
+        assert_equal(@manager.repository,"app","repository should be assignable")
+    end
+    def test_get_json_throws_without_repo
+        setup
+        assert_throw(SecretsManager::NO_REPO) do
+            @manager.get_json
+        end
+    end
+    def test_get_json
+        setup
+        @manager.repository="btrz-api-loyalty"
+        data,code=@manager.get_json
+        assert_equal(code,200)
+        assert_equal(data.username,"loyalty_user")
     end
 end
