@@ -2,6 +2,7 @@
 
 require 'aws-sdk-secretsmanager'
 require 'base64'
+require_relative 'Helpers'
 class SecretsManager
   NO_REPO = :"No repository"
   NO_ENV = :"No environment"
@@ -16,7 +17,7 @@ class SecretsManager
     @default_engine
   end
 
-  def get_json
+  def get_secrets_hash
     throw SecretsManager::NO_ENV if @environment.nil?
     throw SecretsManager::NO_REPO if @repository.nil?
     secret_name = compose_secret_name
@@ -27,34 +28,49 @@ class SecretsManager
     end
     if get_secret_value_response.secret_string
       secret = get_secret_value_response.secret_string
-      json_secret = JSON.parse secret
+      secrets_hash = JSON.parse secret
     end
-    [json_secret, 200]
+    [secrets_hash, 200]
   end
 
-
   def set_secret_value(_secret_hash)
-    resp=@client.create_secret({
-      client_request_token: "token1token1token1token1token1token1token1",
-      name: compose_secret_name,
-      secret_binary:nil,
-      secret_string: _secret_hash[:value]
-      })
+    if need_to_create_secret?(compose_secret_name)
+      secret_hash={_secret_hash[:name]=>_secret_hash[:value]}
+      resp = @client.create_secret(
+        client_request_token: Helpers::create_random_string(32),
+        name: compose_secret_name,
+        secret_binary: nil,
+        secret_string: secret_hash.to_json
+      )
+    else
+      values,code=get_secrets_hash
+      return nil,500 if code>299
+      values[_secret_hash[:name]]=_secret_hash[:secret]
+      @client.put_secret_value({
+        client_request_token: Helpers::create_random_string(32),
+        secret_id: compose_secret_name,
+        secret_string: values.to_json,
+        })
+    end
     200
   end
 
   def get_all_secrets_names
-    secrets_name_result=[]
-    resp=@client.list_secrets()
+    secrets_name_result = []
+    resp = @client.list_secrets
     resp[:secret_list].each do |item|
       secrets_name_result.push(item[:name])
     end
     secrets_name_result
   end
 
-  def need_to_create_secret(secret_name)
-    names=get_all_secrets_names
-    return !names.include?(secret_name)
+  def is_secret_exists?(secret_name)
+    names = get_all_secrets_names
+    names.include?(secret_name)
+  end
+
+  def need_to_create_secret?(secret_name)
+    !is_secret_exists?(secret_name)
   end
 
   attr_accessor :environment
@@ -65,6 +81,4 @@ class SecretsManager
   def compose_secret_name
     @repository + @environment
   end
-
-
 end

@@ -29,20 +29,24 @@ class SecretsManagerTest < Test::Unit::TestCase
   def test_get_json_throws_without_repo
     setup
     assert_throw(SecretsManager::NO_REPO) do
-      @manager.get_json
+      @manager.get_secrets_hash
     end
   end
 
-  def test_get_json
+  def test_get_secrets_hash
     omit
     @manager.repository = 'btrz-api-loyalty'
-    data, code = @manager.get_json
+    data, code = @manager.get_secrets_hash
     assert_equal(code, 200)
     assert_equal(data['username'], 'loyalty_user')
   end
 
+  def test_secret_exists
+    assert(@manager.is_secret_exists?("testtest"))
+  end
+
   def test_secret_creation_requires
-    assert_false(@manager.need_to_create_secret("testtest"))
+    assert_false(@manager.need_to_create_secret?("testtest"),"the secret suppose to be there")
   end
 
   def test_set_variable
