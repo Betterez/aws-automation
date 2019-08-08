@@ -7,14 +7,14 @@ class SecretsManager
   NO_REPO = :"No repository"
   NO_ENV = :"No environment"
   def initialize
-    @default_engine = 'aws'
+    @engine = 'aws'
     @environment = 'production'
     region_name = 'us-east-1'
     @client = Aws::SecretsManager::Client.new(region: region_name)
   end
 
-  def get_engine
-    @default_engine
+  def compose_secret_name
+    "#{@repository}_#{@environment}"
   end
 
   def get_secrets_hash
@@ -74,11 +74,6 @@ class SecretsManager
   end
 
   attr_accessor :environment
+  attr_accessor :engine
   attr_accessor :repository
-
-  private
-
-  def compose_secret_name
-    @repository + @environment
-  end
 end

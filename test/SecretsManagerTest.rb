@@ -9,8 +9,13 @@ class SecretsManagerTest < Test::Unit::TestCase
     @manager = SecretsManager.new
   end
 
+  def test_set_engine
+    @manager.engine="vault"
+    assert_equal(@manager.engine, 'vault')
+  end
+
   def test_default_engine
-    assert_equal(@manager.get_engine, 'aws')
+    assert_equal(@manager.engine, 'aws')
   end
 
   def test_initial_environemnt
@@ -18,7 +23,7 @@ class SecretsManagerTest < Test::Unit::TestCase
   end
 
   def test_initial_repository
-    assert_equal(@manager.repository, nil)
+    assert_nil(@manager.repository)
   end
 
   def test_setting_repository
@@ -27,7 +32,6 @@ class SecretsManagerTest < Test::Unit::TestCase
   end
 
   def test_get_json_throws_without_repo
-    setup
     assert_throw(SecretsManager::NO_REPO) do
       @manager.get_secrets_hash
     end
@@ -54,5 +58,20 @@ class SecretsManagerTest < Test::Unit::TestCase
     @manager.environment = 'test'
     code = @manager.set_secret_value(name: 'mytest', secret: '123456789')
     assert(code > 200 || code < 400)
+    repo_secrets,code=@manager.get_secrets_hash
+    assert(code > 200 || code < 400)
+    assert(repo_secrets.has_key?("mytest"))
+  end
+
+  def test_delete_repo_data
+    test_repo_name="test"
+    test_environment="test"
+    @manager.repository=test_repo_name
+    @manager.environment=test_environment
+
+    names=@manager.get_all_secrets_names
+
+
+
   end
 end
