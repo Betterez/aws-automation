@@ -2,7 +2,7 @@ require_relative '../../betterez/VaultDriver'
 class AwsInstanceMock
   attr_reader(:status)
   def initialize
-    @instance_id=VaultDriver.generate_uid
+    @instance_id=VaultDriver::generate_uid
     @status="ready"
   end
   def run_ssh_command command
