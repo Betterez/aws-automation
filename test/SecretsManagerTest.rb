@@ -6,7 +6,10 @@ class SecretsManagerTest < Test::Unit::TestCase
     def setup
         @manager=SecretsManager.new
     end
-
+    private
+    def compose_secret_name
+    end
+    public
     def test_default_engine
         assert_equal(@manager.get_engine,"aws")
     end
@@ -30,11 +33,13 @@ class SecretsManagerTest < Test::Unit::TestCase
         end
     end
     def test_get_json
-        omit
+        # omit
         setup
         @manager.repository="btrz-api-loyalty"
         data,code=@manager.get_json
         assert_equal(code,200)
         assert_equal(data["username"],"loyalty_user")
     end
+
+    # private compose_secret_name
 end

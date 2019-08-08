@@ -17,10 +17,10 @@ class SecretsManager
     def get_json
         throw  SecretsManager::NO_ENV if  @environment.nil?
         throw SecretsManager::NO_REPO if @repository.nil?
-        secret_name = "postgres"
+        secret_name = compose_secret_name
         begin
           get_secret_value_response = @client.get_secret_value(secret_id: secret_name)
-        rescue
+        rescue => e
           return nil,500
         end
         if get_secret_value_response.secret_string
@@ -31,6 +31,9 @@ class SecretsManager
     end
     attr_accessor :environment
     attr_accessor :repository
-
+    private
+    def compose_secret_name
+      @repository+@environment
+    end
     # private:
 end
