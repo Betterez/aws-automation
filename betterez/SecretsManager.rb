@@ -34,9 +34,13 @@ class SecretsManager
   end
 
   def remove_repo_secrets
+    remove_repo_secrets_by_name compose_secret_name
+  end
+
+  def remove_repo_secrets_by_name(name)
     @client.delete_secret(
       recovery_window_in_days: 7,
-      secret_id: compose_secret_name
+      secret_id: name
     )
   end
 

@@ -75,4 +75,15 @@ class SecretsManagerTest < Test::Unit::TestCase
     assert_false(names.include?(@manager.compose_secret_name),"after deletion shouldn't see this repo")
   end
 
+  def test_delete_test_secrets
+    omit
+    names=@manager.get_all_secrets_names
+    names.each do |name|
+      if name.index("test")==0
+        puts "removing #{name}"
+        puts @manager.remove_repo_secrets_by_name name
+      end
+    end
+    
+  end
 end
