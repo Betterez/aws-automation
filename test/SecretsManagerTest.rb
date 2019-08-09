@@ -46,12 +46,17 @@ class SecretsManagerTest < Test::Unit::TestCase
     assert(@manager.need_to_create_secret?(@manager.compose_secret_name),
       "need to create #{@manager.compose_secret_name}")
     code = @manager.set_secret_value(name: key_name, secret: key_value)
-    assert(@manager.is_secret_exists?(@manager.compose_secret_name))
-    assert_false(@manager.need_to_create_secret?(@manager.compose_secret_name))
+    assert(@manager.is_secret_exists?(@manager.compose_secret_name),"secret needs to be here")
+    assert_false(@manager.need_to_create_secret?(@manager.compose_secret_name),"no need to create existing secret")
     assert(code > 200 || code < 400)
     repo_secrets,code=@manager.get_secrets_hash
     assert(code > 200 || code < 400)
     assert(repo_secrets.key?(key_name))
+    assert(repo_secrets[key_name] == key_value,"#{key_name} should be #{key_value}, but it is #{repo_secrets[key_name]}")
+    key_value = Helpers.create_random_string(12)
+    code = @manager.set_secret_value(name: key_name, secret: key_value)
+    repo_secrets,code=@manager.get_secrets_hash
+    assert(code > 200 || code < 400)
     assert(repo_secrets[key_name] == key_value,"#{key_name} should be #{key_value}, but it is #{repo_secrets[key_name]}")
     @manager.remove_repo_secrets
   end
