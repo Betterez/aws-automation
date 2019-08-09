@@ -33,31 +33,41 @@ class SecretsManager
     [secrets_hash, 200]
   end
 
+  def remove_repo_secrets
+    @client.delete_secret(
+      recovery_window_in_days: 7,
+      secret_id: compose_secret_name
+    )
+  end
+
   def set_secret_value(_secret_hash)
     if need_to_create_secret?(compose_secret_name)
-      secret_hash={_secret_hash[:name]=>_secret_hash[:value]}
+      secret_hash = { _secret_hash[:name] => _secret_hash[:secret] }
       resp = @client.create_secret(
-        client_request_token: Helpers::create_random_string(32),
+        client_request_token: Helpers.create_random_string(32),
         name: compose_secret_name,
         secret_binary: nil,
         secret_string: secret_hash.to_json
       )
     else
-      values,code=get_secrets_hash
-      return nil,500 if code>299
-      values[_secret_hash[:name]]=_secret_hash[:secret]
-      @client.put_secret_value({
-        client_request_token: Helpers::create_random_string(32),
+      values, code = get_secrets_hash
+      return nil, 500 if code > 299
+
+      values[_secret_hash[:name]] = _secret_hash[:secret]
+      @client.put_secret_value(
+        client_request_token: Helpers.create_random_string(32),
         secret_id: compose_secret_name,
-        secret_string: values.to_json,
-        })
+        secret_string: values.to_json
+      )
     end
     200
   end
 
   def get_all_secrets_names
     secrets_name_result = []
-    resp = @client.list_secrets
+    resp = @client.list_secrets({
+      max_results: 100,
+    })
     resp[:secret_list].each do |item|
       secrets_name_result.push(item[:name])
     end
