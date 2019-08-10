@@ -18,7 +18,12 @@ class VaultMigrationTest < Test::Unit::TestCase
     def test_get_repos_names
         data,code=@vault.list_all_registered_repos
         assert(code>199&&code<400)
-        puts data
     end
-
+    def test_get_data_for_repos
+      data,code=@vault.list_all_registered_repos
+      assert(code>199&&code<400)
+      data["repos"].each do |repo|
+        @vault.get_json
+      end
+    end
 end
