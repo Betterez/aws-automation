@@ -23,7 +23,7 @@ class VaultMigrationTest < Test::Unit::TestCase
       data,code=@vault.list_all_registered_repos
       assert(code>199&&code<400)
       data["repos"].each do |repo|
-        @vault.get_json
+        @vault.
       end
     end
 end

@@ -252,6 +252,7 @@ class AwsInstance
 
   ## runs ssh command and streams the output to stdout
   def run_ssh_in_terminal(command)
+    puts "running #{command} in terminal"
     Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
       signal = ssh.open_channel do |channel|
         channel.send_channel_request 'shell' do |_ch, success|
@@ -316,6 +317,7 @@ class AwsInstance
   end
 
   def upload_data_to_file(data, remote_file_name)
+    puts "uploading to #{remote_file_name}"
     Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
       ssh.scp.upload!(StringIO.new(data), remote_file_name)
     end
@@ -478,7 +480,7 @@ class AwsInstance
   def update_init_file_and_restart(service_setup_data)
     throw 'nil aws_setup_information' if @aws_setup_information.nil?
     service_installer = ServiceInstaller.new(service_setup_data, @aws_setup_information[service_setup_data[:environment].to_sym])
-    service_installer.install_service(self)    
+    service_installer.install_service(self)
   end
 
   def load_instance_code(service_setup_data)
