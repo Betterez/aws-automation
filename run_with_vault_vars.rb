@@ -25,7 +25,10 @@ OptionParser.new do |opts|
   opts.on('--ignore_errors', 'if set, will ignore errors') do
     runner_options[:ignore_errors] = true
   end
-  opts.on('--append_vars', 'if set, will append found vault vars to given command') do
+  opts.on('--ignore_output', 'if set, will silence standard output from command') do
+    runner_options[:ignore_output] = true
+  end
+  opts.on('--append_vars', 'if set, will prepend AND append found vault vars to given command') do
     runner_options[:append_vars] = true
   end
 end.parse!
@@ -51,12 +54,14 @@ else
   puts 'vars found for repo. executing command...'
 end
 if runner_options[:append_vars]
-  run_command = "#{runner_options[:command]}#{vars}"
+  run_command = "#{vars} #{runner_options[:command]}#{vars}"
 else
   run_command = "#{vars} #{runner_options[:command]}"
 end
 so = Mixlib::ShellOut.new(run_command, timeout: runner_options[:timeout])
-so.live_stream = $stdout
+unless runner_options[:ignore_output]
+  so.live_stream = $stdout
+end
 so.run_command
 out = so.stdout
 unless runner_options[:ignore_errors]
