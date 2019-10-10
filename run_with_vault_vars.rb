@@ -73,13 +73,9 @@ so = Mixlib::ShellOut.new(run_command, timeout: runner_options[:timeout])
 unless runner_options[:ignore_output]
   so.live_stream = $stdout
 end
-result = so.run_command
+so.run_command
 out = so.stdout
-puts "EXIT STATUS:"
-puts result.status
-puts so.exitstatus
-puts "EXIT STATUS---"
-unless runner_options[:ignore_errors]
+if not runner_options[:ignore_errors] and so.error?
   command_error = so.stderr.strip!
   puts ''
   if command_error.nil? || command_error.empty?
