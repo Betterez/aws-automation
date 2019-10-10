@@ -31,6 +31,9 @@ OptionParser.new do |opts|
   opts.on('--append_vars', 'if set, will prepend AND append found vault vars to given command') do
     runner_options[:append_vars] = true
   end
+  opts.on('--prepend_vars VARS', 'will prepend the given (comma separated) vault vars, and will not append them') do |argument|
+    runner_options[:prepend_vars] = argument
+  end
 end.parse!
 raise OptionParser::MissingArgument if runner_options[:environment].nil? || (runner_options[:environment] == '')
 raise OptionParser::MissingArgument if runner_options[:command].nil? || (runner_options[:command] == '')
@@ -54,7 +57,23 @@ else
   puts 'vars found for repo. executing command...'
 end
 if runner_options[:append_vars]
-  run_command = "#{vars} #{runner_options[:command]}#{vars}"
+  append_vars = vars.split(" ")
+  if runner_options[:prepend_vars]
+    prepend_vars = runner_options[:prepend_vars].split(",")
+    prepend_vars_with_data = []
+    for prepend_var in prepend_vars do
+      found = append_vars.find_index { |var| var.include? prepend_var}
+      if found
+        prepend_vars_with_data.push(append_vars[found])
+        append_vars.delete_at(found)
+      end
+    end
+    prepend_vars_with_data = prepend_vars_with_data.join(" ")
+    append_vars = append_vars.join(",")
+    run_command = "#{prepend_vars_with_data} #{runner_options[:command]}#{append_vars}"
+  else
+    run_command = "#{vars} #{runner_options[:command]}#{vars}"
+  end
 else
   run_command = "#{vars} #{runner_options[:command]}"
 end
