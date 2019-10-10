@@ -54,6 +54,7 @@ if runner_options[:append_vars]
   run_command = "#{runner_options[:command]}#{vars}"
 else
   run_command = "#{vars} #{runner_options[:command]}"
+end
 so = Mixlib::ShellOut.new(run_command, timeout: runner_options[:timeout])
 so.live_stream = $stdout
 so.run_command
