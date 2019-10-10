@@ -60,16 +60,8 @@ if runner_options[:append_vars]
   append_vars = vars.split(" ")
   if runner_options[:prepend_vars]
     prepend_vars = runner_options[:prepend_vars].split(",")
-    prepend_vars_with_data = []
-    for prepend_var in prepend_vars do
-      found = append_vars.find_index { |var| var.include? prepend_var}
-      if found
-        prepend_vars_with_data.push(append_vars[found])
-        append_vars.delete_at(found)
-      end
-    end
-    prepend_vars_with_data = prepend_vars_with_data.join(" ")
-    append_vars = append_vars.join(",")
+    prepend_vars_with_data = append_vars.find_all {|append| prepend_vars.detect {|prepend| append.include? prepend}}.join(" ")
+    append_vars = append_vars.reject {|append| prepend_vars.detect {|prepend| append.include? prepend}}.join(",")
     run_command = "#{prepend_vars_with_data} #{runner_options[:command]}#{append_vars}"
   else
     run_command = "#{vars} #{runner_options[:command]}#{vars}"
