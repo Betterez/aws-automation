@@ -7,14 +7,14 @@ runner_options = { timeout: 3700, ignore_errors: false }
 STDOUT.sync = true
 OptionParser.new do |opts|
   opts.banner = "usage #{__FILE__} [options]"
-  opts.on('--repo FUNTION_NAME', 'find in the claudia.json file of the project') do |argument|
-    runner_options[:function_name] = argument
+  opts.on('--repo REPOSITORY', 'find in the claudia.json file of the project') do |argument|
+    runner_options[:repo] = argument
   end
 end.parse!
-raise OptionParser::MissingArgument if runner_options[:function_name].nil? || (runner_options[:function_name] == '')
+raise OptionParser::MissingArgument if runner_options[:repo].nil? || (runner_options[:repo] == '')
 
 repo = @client.get_alias({
-  function_name: runner_options[:function_name],
+  function_name: runner_options[:repo],
   name: "previous"
 })
 
@@ -22,7 +22,7 @@ puts "alias response"
 puts repo
 
 resp = @client.update_alias({
-  function_name: runner_options[:function_name], 
+  function_name: runner_options[:repo], 
   function_version: repo['function_version'],
   name: "latest", 
 })
