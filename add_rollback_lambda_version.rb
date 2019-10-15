@@ -1,4 +1,5 @@
 require 'aws-sdk'
+require 'optparse'
 
 @region = 'us-east-1' 
 @client = Aws::Lambda::Client.new(region: @region)
