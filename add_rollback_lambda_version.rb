@@ -14,7 +14,7 @@ end.parse!
 raise OptionParser::MissingArgument if runner_options[:function_name].nil? || (runner_options[:function_name] == '')
 
 repo = @client.get_alias({
-  function_name: runner_options[:function_name]
+  function_name: runner_options[:function_name],
   name: "previous"
 })
 
