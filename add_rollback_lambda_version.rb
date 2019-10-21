@@ -25,7 +25,7 @@ puts repo
 resp = @client.update_alias({
   function_name: runner_options[:repo], 
   function_version: repo['function_version'],
-  name: "latest", 
+  name: "current", 
 })
 
 puts "update alias response"
