@@ -632,14 +632,6 @@ class AwsInstance
     selected_instance_type = current_environment_data[:instanceType] if selected_instance_type.nil?
 
     resp = client.run_instances(dry_run: false,
-                                block_device_mappings: [
-                                  {
-                                    device_name: "/dev/sda1",
-                                    ebs: {
-                                      volume_size: 100,
-                                    },
-                                  },
-                                ],
                                 image_id: instance_setup_data[:ami_id],
                                 min_count: 1,
                                 max_count: 1,
