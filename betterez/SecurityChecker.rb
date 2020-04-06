@@ -17,8 +17,8 @@ class SecurityChecker
     @all_users_keys = nil
     @users_policy_data={}
     # number of days after which key will consider not secure
-    @days_to_validate = 60
-    @days_to_clear_deletion = 15
+    @days_to_validate = 90
+    @days_to_clear_deletion = 10
     get_all_aws_keys
   end
 
