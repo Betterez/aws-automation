@@ -685,7 +685,7 @@ class AwsInstance
     instances_manager.add_instance(aws_instance)
     aws_instance.notifire = notifire
     failed_attempts = 0
-    maximum_attempts = 14
+    maximum_attempts = 90
     while failed_attempts < maximum_attempts
       begin
         aws_instance.run_ssh_command('ls')
