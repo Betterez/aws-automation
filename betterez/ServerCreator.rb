@@ -64,6 +64,7 @@ class ServerCreator
       notify("seems to be test server(s), we're not pushing to alb.")
     else
       if servers[0].is_elb_instance?
+        sleep(service_setup_data[:wait_to_register])
         deploy_to_elb(service_setup_data, servers)
       elsif servers[0].is_nginx_instance?
         deploy_to_nginx(service_setup_data)
