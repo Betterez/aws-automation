@@ -54,7 +54,7 @@ OptionParser.new do |opts|
         service_settings[:ami] = true
     end
     opts.on('--wait_to_register', "time to wait before trying to register in ALB") do |argument|
-        service_settings[:wait_to_register] = argument || 1
+        service_settings[:wait_to_register] = argument.to_i || 1
     end
 end.parse!
 
