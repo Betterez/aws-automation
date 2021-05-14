@@ -303,11 +303,11 @@ class SecurityChecker
     if error.nil? && !updated_key_info.nil?
       puts "new key created:#{updated_key_info.access_key.access_key_id}"
       update_hash={AWS_SERVICE_KEY=>updated_key_info.access_key.access_key_id,"aws_service_secret"=>updated_key_info.access_key.secret_access_key}
-      if is_ses_key
-        puts "this service is using ses"
-        update_hash["email_client_username"]=updated_key_info.access_key.access_key_id
-        update_hash["email_client_password"]=calculate_ses_password(updated_key_info.access_key.secret_access_key)
-      end
+      #if is_ses_key
+      #  puts "this service is using ses"
+      #  update_hash["email_client_username"]=updated_key_info.access_key.access_key_id
+      #  update_hash["email_client_password"]=calculate_ses_password(updated_key_info.access_key.secret_access_key)
+      #end
       code=_vault_driver.put_json_for_repo(_service_name,
         update_hash,
         true,)
