@@ -56,6 +56,9 @@ OptionParser.new do |opts|
     opts.on('--wait_to_register WAIT_TO_REGISTER', "time to wait before trying to register in ALB") do |argument|
         service_settings[:wait_to_register] = argument.to_i || 1
     end
+    opts.on('--use_secrets_manager', "indicates if the aws secrets manager is used") do |_argument|
+      service_settings[:use_secrets_manager] = true
+    end
 end.parse!
 
 # check the settings

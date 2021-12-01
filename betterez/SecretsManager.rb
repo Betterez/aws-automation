@@ -8,13 +8,13 @@ class SecretsManager
   NO_ENV = :"No environment"
   def initialize
     @engine = 'aws'
-    @environment = 'production'
+    @environment = 'sandbox'
     region_name = 'us-east-1'
     @client = Aws::SecretsManager::Client.new(region: region_name)
   end
 
   def compose_secret_name
-    "#{@repository}_#{@environment}"
+    "#{@environment}/#{@repository}"
   end
 
   def get_secrets_hash
@@ -85,6 +85,16 @@ class SecretsManager
 
   def need_to_create_secret?(secret_name)
     !is_secret_exists?(secret_name)
+  end
+
+  def convert_to_env_file_format(hash_data)
+    env_data = ''
+    hash_data.keys.each do |key|
+        if !hash_data[key].nil? && hash_data[key].strip != ''
+          env_data += key.upcase + '=' + hash_data[key] + ' '
+        end
+    end
+    env_data
   end
 
   attr_accessor :environment

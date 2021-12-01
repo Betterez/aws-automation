@@ -48,6 +48,24 @@ class ServiceInstallerTest <Test::Unit::TestCase
     assert(installer.configuration_file_content==environment_file_data)
     assert(installer.configuration_file_location=="/home/bz-app/service3.env")
   end
+  def test_environment_file_created_from_secrets_manager
+    overrider=HashOverrider.new
+    service_settings = { 
+      build_number: 110,
+      branch_name: "master",
+      service_file: "notification-service.yml",
+      dont_push_to_lb: false,
+      environment: "staging",
+      use_secrets_manager: true
+    }
+    machine=YAML.load_file(@relative_path+service_settings[:service_file])
+    overrider.override_hash! machine,service_settings[:environment]
+    service_settings.merge!(machine)
+    environment_file_data=File.read("./configuration_files/notification-service.env")    
+    installer=ServiceInstaller.new(service_settings,@aws_info)
+    assert(installer.configuration_file_content==environment_file_data)
+    assert(installer.configuration_file_location=="/home/bz-app/service3.env")
+  end  
   def test_service_file_content_staging
     overrider=HashOverrider.new
     service_settings = { build_number: 110,branch_name: "master",service_file: "notification-service.yml",dont_push_to_lb: false,environment: "staging"}

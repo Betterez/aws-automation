@@ -3,6 +3,7 @@ require_relative 'Notifire'
 require_relative 'VaultDriver'
 require_relative 'AwsInstance'
 require_relative 'SecurityChecker'
+require_relative 'SecretsManager'
 
 class ServiceInstaller
   @service_code = ''
@@ -26,25 +27,40 @@ class ServiceInstaller
       end
     end
 
-    if aws_settings_data.key? :vault
-      puts 'loading data from vault'
-      driver = VaultDriver.from_secrets_file @service_setup_data[:environment]
-      if aws_settings_data.key?(:secrets)
-        puts 'vault unlocked' if driver.unlock_vault(aws_settings_data[:secrets][:vault][:keys]) == 200
-      else
-        puts 'no vault secrets file.'
+    if service_setup_data[:use_secrets_manager]
+      puts 'loading data from secrets manager'
+      secrets_manager = SecretsManager.new
+      secrets_manager.repository = service_setup_data['deployment']['service_name']
+      secrets_manager.environment = service_setup_data[:environment]
+      repo_secrets,code = secrets_manager.get_secrets_hash
+      if code != 200
+        puts 'Data could not be loaded from secrets manager'
       end
-      driver.get_vault_status
-      if driver.online && !driver.locked
-        vault_data = driver.get_system_variables_for_service(service_setup_data['deployment']['service_name'])
-        if !vault_data.nil? && vault_data != ''
-          puts 'vault data loaded'
-        else
-          puts "vault data= #{vault_data}"
-        end
+      if code == 200
+        vault_data = secrets_manager.convert_to_env_file_format(repo_secrets)
+        puts 'Data was loaded from secrets manager'
       end
     else
-      puts "no vault data for this repo in this environment #{@service_setup_data[:environment]}"
+      if aws_settings_data.key? :vault
+        puts 'loading data from vault'
+        driver = VaultDriver.from_secrets_file @service_setup_data[:environment]
+        if aws_settings_data.key?(:secrets)
+          puts 'vault unlocked' if driver.unlock_vault(aws_settings_data[:secrets][:vault][:keys]) == 200
+        else
+          puts 'no vault secrets file.'
+        end
+        driver.get_vault_status
+        if driver.online && !driver.locked
+          vault_data = driver.get_system_variables_for_service(service_setup_data['deployment']['service_name'])
+          if !vault_data.nil? && vault_data != ''
+            puts 'vault data loaded'
+          else
+            puts "vault data= #{vault_data}"
+          end
+        end
+      else
+        puts "no vault data for this repo in this environment #{@service_setup_data[:environment]}"
+      end
     end
 
     case service_setup_data['machine']['daemon_type']
