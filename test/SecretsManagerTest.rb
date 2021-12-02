@@ -76,15 +76,6 @@ class SecretsManagerTest < Test::Unit::TestCase
     puts env_data
   end
 
-  def test_convert_to_env_file_format_with_real_example
-    @manager.environment = 'sandbox'
-    @manager.repository = 'btrz-worker-manifest'
-    repo_secrets,code=@manager.get_secrets_hash
-    puts repo_secrets
-    env_data = @manager.convert_to_env_file_format(repo_secrets)
-    puts env_data
-  end
-
   def test_delete_repo_data
     omit
     test_repo_name="test"+Helpers.create_random_string(5)
