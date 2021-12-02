@@ -24,6 +24,7 @@ class SecretsManager
     begin
       get_secret_value_response = @client.get_secret_value(secret_id: secret_name)
     rescue StandardError => e
+      puts "Error getting the secrets: #{e}"
       return nil, 500
     end
     if get_secret_value_response.secret_string
