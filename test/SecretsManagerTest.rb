@@ -76,6 +76,69 @@ class SecretsManagerTest < Test::Unit::TestCase
     puts env_data
   end
 
+  def test_create_new_secret
+    @manager.repository = 'testing-repository'
+    @manager.environment = 'testing'
+    secret_value_1 = "value 1"
+    secret_value_2 = "value 2"
+    secret_value_3 = "value 3"
+    create_set = {
+      secret1: secret_value_1, 
+      secret2: secret_value_2,
+      secret3: secret_value_3
+    }
+    code = @manager.set_secret_value(create_set, true)
+    assert(code > 200 || code < 400)
+
+    repo_secrets,code=@manager.get_secrets_hash
+    assert(code > 200 || code < 400)
+    assert(repo_secrets.key?("secret1"))
+    assert(repo_secrets.key?("secret2"))
+    assert(repo_secrets.key?("secret3"))
+    assert(repo_secrets["secret1"] == secret_value_1,"secret1 should be #{secret_value_1}, but it is #{repo_secrets["secret1"]}")
+    assert(repo_secrets["secret2"] == secret_value_2,"secret2 should be #{secret_value_2}, but it is #{repo_secrets["secret2"]}")
+    assert(repo_secrets["secret3"] == secret_value_3,"secret3 should be #{secret_value_3}, but it is #{repo_secrets["secret3"]}")
+  end
+
+  def test_update_secret
+    @manager.repository = 'testing-repository'
+    @manager.environment = 'testing'
+
+    new_secret_value_2 = "updated 2"
+    new_secret_value_3 = "updated 3"
+
+    update_set = {
+      secret2: new_secret_value_2,
+      secret3: new_secret_value_3
+    }
+
+    code = @manager.set_secret_value(update_set, true)
+    assert(code > 200 || code < 400)
+
+    repo_secrets,code=@manager.get_secrets_hash
+    assert(code > 200 || code < 400)
+    assert(repo_secrets.key?("secret1"))
+    assert(repo_secrets.key?("secret2"))
+    assert(repo_secrets.key?("secret3"))
+    assert(repo_secrets["secret1"] == "value 1","secret1 should be value 1, but it is #{repo_secrets["secret1"]}")
+    assert(repo_secrets["secret2"] == new_secret_value_2,"secret2 should be #{new_secret_value_2}, but it is #{repo_secrets["secret2"]}")
+    assert(repo_secrets["secret3"] == new_secret_value_3,"secret3 should be #{new_secret_value_3}, but it is #{repo_secrets["secret3"]}")
+  end
+
+  def test_remove_secret_key
+    @manager.repository = "testing-repository"
+    @manager.environment = "testing"
+
+    code = @manager.delete_secret_key("secret2")
+    assert(code > 200 || code < 400)
+
+    repo_secrets,code=@manager.get_secrets_hash
+    assert(code > 200 || code < 400)
+    assert(repo_secrets.key?("secret1"))
+    assert(repo_secrets.key?("secret2") == false)
+    assert(repo_secrets.key?("secret3"))
+  end
+
   def test_delete_repo_data
     omit
     test_repo_name="test"+Helpers.create_random_string(5)
