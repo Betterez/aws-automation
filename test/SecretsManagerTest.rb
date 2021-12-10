@@ -1,17 +1,19 @@
 #!/usr/bin/ruby
 # frozen_string_literal: true
-
+# these tests will create a secret in AWS on each run and this costs money
 require 'test/unit'
 require_relative '../betterez/SecretsManager'
 
-class SecretsManagerTest < Test::Unit::TestCase
+class SecretsManagerTest < Test::Unit::TestCase  
+  @@random_repo = Helpers.create_random_string(5)
+
   def setup
-    @manager = SecretsManager.new
+    @manager = SecretsManager.new    
   end
 
   def test_set_engine
-    @manager.engine="vault"
-    assert_equal(@manager.engine, 'vault')
+    @manager.engine="sm"
+    assert_equal(@manager.engine, 'sm')
   end
 
   def test_default_engine
@@ -37,48 +39,27 @@ class SecretsManagerTest < Test::Unit::TestCase
     end
   end
 
-  def test_set_variable
-    @manager.repository = 'test'+Helpers.create_random_string(5)
-    @manager.environment = 'test'
-    key_name = 'mytest'
-    key_value = Helpers.create_random_string(12)
-
-    assert(@manager.need_to_create_secret?(@manager.compose_secret_name),
-      "need to create #{@manager.compose_secret_name}")
-    code = @manager.set_secret_value(name: key_name, secret: key_value)
-    assert(@manager.is_secret_exists?(@manager.compose_secret_name),"secret needs to be here")
-    assert_false(@manager.need_to_create_secret?(@manager.compose_secret_name),"no need to create existing secret")
-    assert(code > 200 || code < 400)
-    repo_secrets,code=@manager.get_secrets_hash
-    assert(code > 200 || code < 400)
-    assert(repo_secrets.key?(key_name))
-    assert(repo_secrets[key_name] == key_value,"#{key_name} should be #{key_value}, but it is #{repo_secrets[key_name]}")
-    key_value = Helpers.create_random_string(12)
-    code = @manager.set_secret_value(name: key_name, secret: key_value)
-    repo_secrets,code=@manager.get_secrets_hash
-    assert(code > 200 || code < 400)
-    assert(repo_secrets[key_name] == key_value,"#{key_name} should be #{key_value}, but it is #{repo_secrets[key_name]}")
-    @manager.remove_repo_secrets
-  end
-
-  def test_convert_to_env_file_format
-    @manager.environment = 'test'
-    @manager.repository = 'test'+Helpers.create_random_string(5)
-    key_name = 'mytest'
-    key_value = Helpers.create_random_string(12)
-    assert(@manager.need_to_create_secret?(@manager.compose_secret_name),
-      "need to create #{@manager.compose_secret_name}")
-    code = @manager.set_secret_value(name: key_name, secret: key_value)
-    assert(code > 200 || code < 400)
-    repo_secrets,code=@manager.get_secrets_hash
-    puts repo_secrets
-    env_data = @manager.convert_to_env_file_format(repo_secrets)
-    puts env_data
-  end
-
-  def test_create_new_secret
-    @manager.repository = 'testing-repository'
+  def test_1_convert_to_env_file_format
     @manager.environment = 'testing'
+    @manager.repository = 'test-' + @@random_repo
+
+    key_name = 'mytest'
+    key_value = Helpers.create_random_string(12)
+    assert(@manager.need_to_create_secret?(@manager.compose_secret_name),
+      "need to create #{@manager.compose_secret_name}")
+    sleep 1  
+    code = @manager.set_secret_value(name: key_name, secret: key_value)
+    sleep 1
+    assert(code > 200 || code < 400)
+    repo_secrets,code=@manager.get_secrets_hash
+    sleep 1
+    @manager.convert_to_env_file_format(repo_secrets)
+  end
+
+  def test_2_create_new_secret
+    @manager.environment = 'testing'
+    @manager.repository = 'test-' + @@random_repo
+
     secret_value_1 = "value 1"
     secret_value_2 = "value 2"
     secret_value_3 = "value 3"
@@ -88,9 +69,11 @@ class SecretsManagerTest < Test::Unit::TestCase
       secret3: secret_value_3
     }
     code = @manager.set_secret_value(create_set, true)
+    sleep 1
     assert(code > 200 || code < 400)
 
     repo_secrets,code=@manager.get_secrets_hash
+    sleep 1
     assert(code > 200 || code < 400)
     assert(repo_secrets.key?("secret1"))
     assert(repo_secrets.key?("secret2"))
@@ -100,9 +83,9 @@ class SecretsManagerTest < Test::Unit::TestCase
     assert(repo_secrets["secret3"] == secret_value_3,"secret3 should be #{secret_value_3}, but it is #{repo_secrets["secret3"]}")
   end
 
-  def test_update_secret
-    @manager.repository = 'testing-repository'
+  def test_3_update_secret
     @manager.environment = 'testing'
+    @manager.repository = 'test-' + @@random_repo 
 
     new_secret_value_2 = "updated 2"
     new_secret_value_3 = "updated 3"
@@ -113,9 +96,11 @@ class SecretsManagerTest < Test::Unit::TestCase
     }
 
     code = @manager.set_secret_value(update_set, true)
+    sleep 1
     assert(code > 200 || code < 400)
 
     repo_secrets,code=@manager.get_secrets_hash
+    sleep 1
     assert(code > 200 || code < 400)
     assert(repo_secrets.key?("secret1"))
     assert(repo_secrets.key?("secret2"))
@@ -125,44 +110,29 @@ class SecretsManagerTest < Test::Unit::TestCase
     assert(repo_secrets["secret3"] == new_secret_value_3,"secret3 should be #{new_secret_value_3}, but it is #{repo_secrets["secret3"]}")
   end
 
-  def test_remove_secret_key
-    @manager.repository = "testing-repository"
+  def test_4_remove_secret_key
     @manager.environment = "testing"
+    @manager.repository = 'test-' + @@random_repo
 
     code = @manager.delete_secret_key("secret2")
+    sleep 1
     assert(code > 200 || code < 400)
 
     repo_secrets,code=@manager.get_secrets_hash
+    sleep 1
     assert(code > 200 || code < 400)
     assert(repo_secrets.key?("secret1"))
     assert(repo_secrets.key?("secret2") == false)
     assert(repo_secrets.key?("secret3"))
   end
 
-  def test_delete_repo_data
-    omit
-    test_repo_name="test"+Helpers.create_random_string(5)
-    test_environment="test"
+  def test_5_delete_repo_data
+    @manager.environment = "testing"
+    @manager.repository = 'test-' + @@random_repo
 
-    @manager.repository=test_repo_name
-    @manager.environment=test_environment
-    @manager.set_secret_value({name: "test", secret: "some secret"})
-    names=@manager.get_all_secrets_names
-    assert(names.include?(@manager.compose_secret_name),"new repo #{@manager.compose_secret_name} should exists")
-    code = @manager.remove_repo_secrets
+    @manager.remove_repo_secrets
+    sleep 1
     names=@manager.get_all_secrets_names
     assert_false(names.include?(@manager.compose_secret_name),"after deletion shouldn't see this repo")
-  end
-
-  def test_delete_test_secrets
-    omit
-    names=@manager.get_all_secrets_names
-    names.each do |name|
-      if name.index("test")==0
-        puts "removing #{name}"
-        puts @manager.remove_repo_secrets_by_name name
-      end
-    end
-    
   end
 end
