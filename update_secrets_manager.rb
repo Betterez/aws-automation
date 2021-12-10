@@ -58,5 +58,5 @@ puts "update done with #{code}"
 if !code.nil? && code > 399
   puts "Error #{code} setting data to #{sm_setup[:env]} secrets manager."
   exit 1
-
+end
 puts 'done updating'
