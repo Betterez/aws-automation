@@ -606,8 +606,9 @@ class AwsInstance
         sleep 5
         sleep_counter += 1
         puts "clock #{sleep_counter} out of 96\r\n"
-        if sleep_counter > 60 # 8 minutes max
+        if sleep_counter > 96 # 8 minutes max          
           Thread.kill(command_thread)
+          puts "COMMAND KILLED: #{command}"
           break
         end
       end
