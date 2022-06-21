@@ -279,13 +279,27 @@ class SecurityChecker
   ## check_security_for_service -load the service info from vault and checks for
   # service_name -+string+  service needed inspection
   # vault_driver - +VaultDriver+ that is already configured to the correct environment
-  def check_security_for_service(_service_name, _vault_driver)
+  # _secrets_manager - +SecretsManager+ that is already configured to the correct environment
+  def check_security_for_service(_service_name, _vault_driver, _secrets_manager)
     get_all_aws_keys
     is_ses_key=false
-    throw "can't proceed with a nil driver" if _vault_driver.nil?
-    throw "can't proceed with a offline driver" if !_vault_driver.get_vault_status
-    #get the keys
-    service_security_info, code = get_service_info_from_vault_driver(_vault_driver, _service_name)
+    service_security_info=nil
+    code=nil
+
+    if _secrets_manager != nil
+      puts "loading security info for repo from secrets manager"
+      _secrets_manager.repository = _service_name
+      service_security_info, code = _secrets_manager.get_secrets_hash
+      puts "security info tried to be loaded from secrets manager"
+    else
+      throw "can't proceed with a nil driver" if _vault_driver.nil?
+      throw "can't proceed with a offline driver" if !_vault_driver.get_vault_status
+      #get the keys
+      puts "loading security info for repo from vault"
+      service_security_info, code = get_service_info_from_vault_driver(_vault_driver, _service_name)
+      puts "security info tried to be loaded from vault"
+    end
+
     return code if code > 399
     return nil,nil if (!service_security_info.key?(AWS_SERVICE_KEY))
     puts "looking for #{service_security_info[AWS_SERVICE_KEY]}(#{service_security_info[AWS_SERVICE_KEY].class}) in the keys directory"
@@ -308,9 +322,13 @@ class SecurityChecker
       #  update_hash["email_client_username"]=updated_key_info.access_key.access_key_id
       #  update_hash["email_client_password"]=calculate_ses_password(updated_key_info.access_key.secret_access_key)
       #end
-      code=_vault_driver.put_json_for_repo(_service_name,
-        update_hash,
-        true,)
+      if _secrets_manager != nil
+        code = secrets_manager.set_secret_value(update_hash, true)
+      else
+        code=_vault_driver.put_json_for_repo(_service_name,
+          update_hash,
+          true,)        
+      end
     end
     return code,nil
   end

@@ -295,15 +295,24 @@ class AwsInstance
   end
 
   def self.run_pci_dss_check(service_setup_data, aws_setup_information)
+    secrets_manager = nil
     if service_setup_data[:pci_dss]
       Helpers.log 'checking psi dss settings'
-      Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
-      driver = VaultDriver.from_secrets_file service_setup_data[:environment]
-      if aws_setup_information.key?(:secrets)
-        puts 'vault required.'
-        puts 'vault unlocked' if driver.unlock_vault(aws_setup_information[:secrets][:vault][:keys]) == 200
-      else
-        puts 'no vault secrets file.'
+
+      if service_setup_data[:use_secrets_manager]
+        puts 'preparing secrets manager'
+        secrets_manager = SecretsManager.new        
+        secrets_manager.environment = service_setup_data[:environment]
+        puts 'secrets manager prepared'
+      else        
+        Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
+        driver = VaultDriver.from_secrets_file service_setup_data[:environment]
+        if aws_setup_information.key?(:secrets)
+          puts 'vault required.'
+          puts 'vault unlocked' if driver.unlock_vault(aws_setup_information[:secrets][:vault][:keys]) == 200
+        else
+          puts 'no vault secrets file.'
+        end
       end
       Helpers.log 'loadning dss information'
       checker = SecurityChecker.new
@@ -311,7 +320,7 @@ class AwsInstance
       checker.get_all_aws_keys
       Helpers.log 'loading aws keys done'
       Helpers.log "checking security settings for service #{service_setup_data['deployment']['service_name']}"
-      ok, error = checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver)
+      ok, error = checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver, secrets_manager)
       throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" unless error.nil?
     end
   end
