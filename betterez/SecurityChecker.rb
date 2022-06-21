@@ -323,7 +323,7 @@ class SecurityChecker
       #  update_hash["email_client_password"]=calculate_ses_password(updated_key_info.access_key.secret_access_key)
       #end
       if _secrets_manager != nil
-        code = secrets_manager.set_secret_value(update_hash, true)
+        code = _secrets_manager.set_secret_value(update_hash, true)
       else
         code=_vault_driver.put_json_for_repo(_service_name,
           update_hash,
