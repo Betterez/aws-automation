@@ -3,7 +3,7 @@ require_relative './betterez/SecretsManager'
 require 'optparse'
 require 'mixlib/shellout'
 
-runner_options = { timeout: 3700, ignore_errors: false }
+runner_options = { timeout: 6000, ignore_errors: false }
 STDOUT.sync = true
 OptionParser.new do |opts|
   opts.banner = "usage #{__FILE__} [options]"
