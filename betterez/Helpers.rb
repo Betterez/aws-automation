@@ -39,7 +39,7 @@ module Helpers
   end
 
   # creates aws authentication info
-  def self.create_aws_authentication_token
+  def self.old_create_aws_authentication_token
     # authData = loadJSONData('settings/authentication.json')
     auth_file_name = 'settings/aws-auth.json'
     throw 'aws auth file does not exist!' unless File.exist?(auth_file_name)
@@ -49,6 +49,10 @@ module Helpers
     puts "using #{account['name']}"
     account_creds = account['credentials']
     Aws::Credentials.new(account_creds['access_key_id'], account_creds['secret_access_key'])
+  end
+
+  def self.create_aws_authentication_token
+    Aws::InstanceProfileCredentials.new
   end
 
   def self.create_date_string

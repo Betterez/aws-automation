@@ -34,5 +34,4 @@ class ConfigurationTest <Test::Unit::TestCase
     assert(conf.getConfigurationData[:lb]["server_ip"])
     assert(conf.getConfigurationData[:lb]["keys"])
   end
-    
 end
