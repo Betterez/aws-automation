@@ -115,22 +115,11 @@ class SecretsManager
     !is_secret_exists?(secret_name)
   end
 
-  def json?(secret_value)
-    JSON.parse(secret_value)
-    true
-  rescue JSON::ParserError
-    false
-  end
-
   def convert_to_env_file_format(hash_data)
     env_data = ''
     hash_data.keys.each do |key|
         if !hash_data[key].nil? && hash_data[key].strip != ''
-          if json?(hash_data[key])
-            env_data += key.upcase + '=' + hash_data[key].to_json + ' '
-          else 
-            env_data += key.upcase + '=' + hash_data[key] + ' '
-          end
+          env_data += key.upcase + '=' + hash_data[key] + ' '
         end
     end
     env_data
