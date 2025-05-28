@@ -102,6 +102,11 @@ class ServiceInstaller
                      end
       @configuration_file_content += "BUILD_NUMBER=#{service_setup_data[:build_number]}\n"
     end
+    repo_value = if service_setup_data['deployment'].key?('repo_name') && !service_setup_data['deployment']['repo_name'].to_s.strip.empty?
+               service_setup_data['deployment']['repo_name']
+             else
+               service_setup_data['deployment']['service_name']
+             end
     @service_code.gsub!('[repo]', service_setup_data['deployment']['service_name'])
   end
 
@@ -122,7 +127,7 @@ class ServiceInstaller
       Description=betterez service
 
       [Service]
-      EnvironmentFile=/home/bz-app/[repo].env
+      EnvironmentFile=/home/bz-app/#{service_setup_data['deployment']['service_name']}.env
       WorkingDirectory=/home/bz-app/[repo]/
       ExecStart=[runner_path] [runner_command]
       User=bz-app
