@@ -122,7 +122,7 @@ class ServiceInstaller
       Description=betterez service
 
       [Service]
-      EnvironmentFile=/home/bz-app/[repo].env
+      EnvironmentFile=/home/bz-app/#{service_setup_data['deployment']['service_name']}.env
       WorkingDirectory=/home/bz-app/[repo]/
       ExecStart=[runner_path] [runner_command]
       User=bz-app
