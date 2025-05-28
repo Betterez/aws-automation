@@ -107,7 +107,7 @@ class ServiceInstaller
              else
                service_setup_data['deployment']['service_name']
              end
-    @service_code.gsub!('[repo]', service_setup_data['deployment']['service_name'])
+    @service_code.gsub!('[repo]', repo_value)
   end
 
   def install_service(destination_machine)
