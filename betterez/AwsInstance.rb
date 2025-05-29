@@ -519,7 +519,7 @@ class AwsInstance
                       "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'" \
                       " && sudo -H -u bz-app bash -c 'git pull origin #{branch_name}'"
       else
-        ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo}'"
+        ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo} #{service_name}'"
         run_ssh_command ssh_command
         unless branch_name == 'master'
           notify "switching to #{branch_name}"

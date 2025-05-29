@@ -102,12 +102,7 @@ class ServiceInstaller
                      end
       @configuration_file_content += "BUILD_NUMBER=#{service_setup_data[:build_number]}\n"
     end
-    repo_value = if service_setup_data['deployment'].key?('repo_name')
-               service_setup_data['deployment']['repo_name']
-             else
-               service_setup_data['deployment']['service_name']
-             end
-    @service_code.gsub!('[repo]', repo_value)
+    @service_code.gsub!('[repo]', service_setup_data['deployment']['service_name'])
   end
 
   def install_service(destination_machine)
@@ -127,7 +122,7 @@ class ServiceInstaller
       Description=betterez service
 
       [Service]
-      EnvironmentFile=/home/bz-app/#{service_setup_data['deployment']['service_name']}.env
+      EnvironmentFile=/home/bz-app/[repo].env
       WorkingDirectory=/home/bz-app/[repo]/
       ExecStart=[runner_path] [runner_command]
       User=bz-app
