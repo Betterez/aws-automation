@@ -10,7 +10,10 @@ class SecretsManager
     @engine = 'aws'
     @environment = 'sandbox'
     region_name = 'us-east-1'
-    @client = Aws::SecretsManager::Client.new(region: region_name)
+    @client = Aws::SecretsManager::Client.new(
+      region: region_name,
+      credentials: Aws::InstanceProfileCredentials.new
+      )
   end
 
   def compose_secret_name
