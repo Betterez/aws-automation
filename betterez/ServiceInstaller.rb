@@ -91,7 +91,12 @@ class ServiceInstaller
         @configuration_file_content += "#{value}\n"
       end
       if !vault_data.nil? && vault_data != ''
-        vault_data.split(' ').each do |value|
+        # Split the string into key=value pairs, using a regex that only splits on spaces 
+        # that are followed by another key (e.g., NAME=, SECRET=). This prevents splitting 
+        # inside values that contain spaces.
+        # This code is tested in SecretsManagerTest.rb.
+        pairs_vault_data = vault_data.split(/\s(?=[A-Z0-9_]+=)/)
+        pairs_vault_data.each do |value|
           @configuration_file_content += "#{value}\n"
         end
       end

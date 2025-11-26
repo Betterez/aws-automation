@@ -126,7 +126,34 @@ class SecretsManagerTest < Test::Unit::TestCase
     assert(repo_secrets.key?("secret3"))
   end
 
-  def test_5_delete_repo_data
+  def test_5_handles_values_with_spaces
+    @manager.environment = 'testing'
+    @manager.repository = 'test-' + @@random_repo
+    key_name = 'mytest2'
+    key_value = "asdf asdf asdf"
+    sleep 1  
+    code = @manager.set_secret_value(name: key_name, secret: key_value)
+    sleep 1
+    assert(code > 200 || code < 400)
+    repo_secrets,code=@manager.get_secrets_hash
+    sleep 1
+    vault_data = @manager.convert_to_env_file_format(repo_secrets)
+    configuration_file_content = <<~EOF
+    TEST=value1
+    EOF
+    if !vault_data.nil? && vault_data != ''
+      pairs_vault_data = vault_data.split(/\s(?=[A-Z0-9_]+=)/)
+      pairs_vault_data.each do |value|
+        configuration_file_content += "#{value}\n"
+      end
+    end
+    content_lines = configuration_file_content.strip.split("\n")
+    content_lines.each do |line|
+      assert_match(/^[A-Z0-9_]+=.+$/, line, "Line is not in KEY=value")
+    end
+  end
+
+  def test_6_delete_repo_data
     @manager.environment = "testing"
     @manager.repository = 'test-' + @@random_repo
 
