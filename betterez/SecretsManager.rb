@@ -119,11 +119,16 @@ class SecretsManager
   end
 
   def convert_to_env_file_format(hash_data)
-    env_data = ''
+    env_data = []
     hash_data.keys.each do |key|
-        if !hash_data[key].nil? && hash_data[key].strip != ''
-          env_data += key.upcase + '=' + hash_data[key] + ' '
+      if !hash_data[key].nil? && hash_data[key].strip != ''
+        value = hash_data[key]
+        if value.include?(' ')
+          env_data << "#{key.upcase}='#{value}'"
+        else
+          env_data << "#{key.upcase}=#{value}"
         end
+      end
     end
     env_data
   end
