@@ -60,28 +60,25 @@ if code == 200
   vars = secrets_manager.convert_to_env_file_format(repo_secrets)
   puts 'Data was loaded from secrets manager'
 end
-# This code is tested in SecretsManagerTest.rb.
-if vault_data.is_a?(Array) && !vault_data.empty? && !vault_data.all? { |v| v.strip.empty? }
+
+if vars.strip == ''
   puts "no vars for this repo, exiting\r\n"
   exit 1
 else
   puts 'vars found for repo. executing command...'
 end
 if runner_options[:append_vars]
-  append_vars = vars
+  append_vars = vars.split(" ")
   if runner_options[:prepend_vars]
-    # test_6_handles_values_with_spaces_build_command_with_append_vars_and_prepend_vars
     prepend_vars = runner_options[:prepend_vars].split(",")
     prepend_vars_with_data = append_vars.find_all {|append| prepend_vars.detect {|prepend| append.include? prepend}}.join(" ")
     append_vars = append_vars.reject {|append| prepend_vars.detect {|prepend| append.include? prepend}}.join(",")
     run_command = "#{prepend_vars_with_data} #{runner_options[:command]}#{append_vars}"
   else
-    # test_7_handles_values_with_spaces_build_command_with_append_vars_and_prepend_vars
-    run_command = "#{vars.join(' ')} #{runner_options[:command]}#{vars.join(' ')}}"
+    run_command = "#{vars} #{runner_options[:command]}#{vars}"
   end
 else
-  # test_8_handles_values_with_spaces_build_command_without_append_vars
-  run_command = "#{vars.join(' ')} #{runner_options[:command]}"
+  run_command = "#{vars} #{runner_options[:command]}"
 end
 so = Mixlib::ShellOut.new(run_command, timeout: runner_options[:timeout])
 unless runner_options[:ignore_output]

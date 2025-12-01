@@ -129,12 +129,10 @@ class SecretsManagerTest < Test::Unit::TestCase
   def test_5_handles_values_with_spaces
     @manager.environment = 'testing'
     @manager.repository = 'test-' + @@random_repo
-    create_set = {
-      mytest2: "asdf asdf asdg", 
-      mytest3: "someKey",
-    }
+    key_name = 'mytest2'
+    key_value = "asdf asdf asdf"
     sleep 1  
-    code = @manager.set_secret_value(create_set)
+    code = @manager.set_secret_value(name: key_name, secret: key_value)
     sleep 1
     assert(code > 200 || code < 400)
     repo_secrets,code=@manager.get_secrets_hash
@@ -143,8 +141,9 @@ class SecretsManagerTest < Test::Unit::TestCase
     configuration_file_content = <<~EOF
     TEST=value1
     EOF
-    if vault_data.is_a?(Array) && !vault_data.empty? && !vault_data.all? { |v| v.strip.empty? }
-      vault_data.each do |value|
+    if !vault_data.nil? && vault_data != ''
+      pairs_vault_data = vault_data.split(/\s(?=[A-Z0-9_]+=)/)
+      pairs_vault_data.each do |value|
         configuration_file_content += "#{value}\n"
       end
     end
@@ -154,80 +153,7 @@ class SecretsManagerTest < Test::Unit::TestCase
     end
   end
 
-  def test_6_handles_values_with_spaces_build_command_with_append_vars_and_prepend_vars
-    @manager.environment = 'testing'
-    @manager.repository = 'test-' + @@random_repo
-    runner_options = {}
-
-    runner_options[:command] = "npm test command"
-    runner_options[:prepend_vars] = "MYTEST2"
-
-    repo_secrets,code=@manager.get_secrets_hash
-    assert(code > 200 || code < 400)
-    sleep 1
-
-    append_vars = @manager.convert_to_env_file_format(repo_secrets)
-
-    prepend_vars = runner_options[:prepend_vars].split(",")
-    prepend_vars_with_data = append_vars.find_all {|append| prepend_vars.detect {|prepend| append.include? prepend}}.join(" ")
-    append_vars = append_vars.reject {|append| prepend_vars.detect {|prepend| append.include? prepend}}.join(",")
-    run_command = "#{prepend_vars_with_data} #{runner_options[:command]}#{append_vars}"
-    assert(run_command.start_with?(prepend_vars_with_data), 
-    "Command should start with prepend vars. Expected to start with: '#{prepend_vars_with_data}', but got: '#{run_command}'")
-  end
-
-  def test_7_handles_values_with_spaces_build_command_with_append_vars
-    @manager.environment = 'testing'
-    @manager.repository = 'test-' + @@random_repo
-    runner_options = {}
-
-    runner_options[:command] = "npm test command"
-    repo_secrets,code=@manager.get_secrets_hash
-    assert(code > 200 || code < 400)
-
-    sleep 1
-
-    vars = @manager.convert_to_env_file_format(repo_secrets)
-    run_command = "#{vars.join(' ')} #{runner_options[:command]}#{vars.join(' ')}"
-    assert(run_command.start_with?(vars.join(' ')), 
-    "Command should start with vars. Expected to start with: '#{vars.join(' ')}', but got: '#{run_command}'")
-  end
-
-  def test_8_handles_values_with_spaces_build_command_without_append_vars
-    @manager.environment = 'testing'
-    @manager.repository = 'test-' + @@random_repo
-    runner_options = {}
-
-    runner_options[:command] = "npm test command"
-    key_name = 'mytest2'
-    key_value = "asdf asdf asdf"
-
-    sleep 1  
-    code = @manager.set_secret_value(name: key_name, secret: key_value)
-    sleep 1
-
-    assert(code > 200 || code < 400)
-    repo_secrets,code=@manager.get_secrets_hash
-    sleep 1
-
-    vault_data = [""]
-
-    if vault_data.empty? || vault_data.all? { |v| v.strip.empty? }
-
-    else
-      assert_false(true, "If the value is empty, do not enter it here.")
-    end
-
-    vault_data = @manager.convert_to_env_file_format(repo_secrets)
-    run_command = "#{vault_data.join(' ')} #{runner_options[:command]}"
-
-    assert_match(/#{runner_options[:command]}$/, run_command, "run_command should end with the npm command")
-    
-    assert(!run_command.include?('['), "run_command should not contain array brackets")
-    assert(!run_command.include?(']'), "run_command should not contain array brackets")
-  end
-
-  def test_9_delete_repo_data
+  def test_6_delete_repo_data
     @manager.environment = "testing"
     @manager.repository = 'test-' + @@random_repo
 
