@@ -985,12 +985,8 @@ class AwsInstance
       resp1 = client.describe_images(
         image_ids: [resp.image_id] # TODO: check the actual format
       )
-      if resp1.images[0][:state] == 'available'
-        break
-      end
-      if resp1.images[0][:state] == 'failed'
-        raise "image creation failed"
-      end
+      break if resp1.images[0][:state] == 'available'
+
       sleep(10)
       print '.'
     end
