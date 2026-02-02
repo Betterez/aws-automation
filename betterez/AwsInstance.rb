@@ -392,7 +392,7 @@ class AwsInstance
     ami_id = AwsInstance.get_ami_id(service_setup_data['machine']['image'])
     unless ami_id
       notifire.notify(1, "sorry! there is no ami id for type #{service_setup_data['machine']['image']}! Are you missing a packer run?")
-      return []
+      throw "no ami id for type #{service_setup_data['machine']['image']}"
     end
     total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
@@ -985,12 +985,7 @@ class AwsInstance
       resp1 = client.describe_images(
         image_ids: [resp.image_id] # TODO: check the actual format
       )
-      if resp1.images[0][:state] == 'available'
-        break
-      end
-      if resp1.images[0][:state] == 'failed'
-        raise "image creation failed"
-      end
+      break if resp1.images[0][:state] == 'available'
 
       sleep(10)
       print '.'
