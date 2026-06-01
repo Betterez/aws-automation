@@ -50,6 +50,40 @@ Do not include any secret information in the service file. Any and all secret en
   * `result` - partial excerpt from the output of the healthcheck command. This excerpt can be in any part of the output. as long as it's there, the service considered to be healthy.
 * `elb_version` - if not present or 1, use the classic elb. if 2, use the new elb and the instance will be inserted into the respected target group.
 
+#### Multiple applications on one instance (`applications`)
+
+Optional root-level `applications` (array) allows several repositories on the same EC2 instance. Each element has its own **`deployment`** and **`machine`** (same keys as the single-app layout): clone or S3 deploy, `install` / `fast_install`, `daemon_type`, `start`, optional Vault/Secrets Manager via `service_name`, and its own systemd or upstart unit.
+
+* **Order** — Array order defines clone and install order. Put dependencies first (for example an internal service before the facade that calls it).
+* **Backward compatibility** — If `applications` is omitted, the file behaves as before using only the root `deployment` and `machine` sections.
+* **Infrastructure primary** — The EC2 tag `Repository`, ELB-related lookups, and the root `deployment` / merged `machine` used after load follow this rule: the **last** application whose `healthcheck.perform` is `true`; if none are `true`, the **last** application in the list. Only apps with `healthcheck.perform: true` are waited on during instance health checks; set it to `false` for sidecars that should not block provisioning. (VER)
+* **Shared `machine` keys** — You can keep shared values (for example `image`, `servers_count`, `instance_type`) on the root `machine` section. They are merged with the primary app’s `machine` when the file is loaded so AMI selection and defaults still work.
+* **Overrides** — Because `applications` is a list, an environment override usually replaces the whole `applications` array for that environment unless you repeat the full list under `override.<env>.applications`.
+
+Abbreviated example:
+
+```yaml
+machine:
+  image: my-packer-image
+applications:
+  - deployment:
+      service_name: internal-api
+      healthcheck: { perform: false, command: "", result: "" }
+      source: { type: git, repo: git@bitbucket.org:org/repo.git, branch_name: main }
+    machine: { daemon_type: systemd, start: "npm start", install: ["npm ci"] }
+  - deployment:
+      service_name: facade-api
+      healthcheck: { perform: true, command: "curl -m 5 -i localhost:3000/health|head -n1", result: "200 OK" }
+      nginx_conf: api
+      path_name: api
+      service_type: http
+      source: { type: git, repo: git@github.com:Betterez/facade.git, branch_name: master }
+      elb_version: 2
+    machine: { daemon_type: systemd, start: "npm start", install: ["npm ci"] }
+```
+
+The AMI or base image must include SSH access (and `known_hosts`) for every git host used (for example both GitHub and Bitbucket).
+
 ### Overriding
 It is possible to override any of the above sections using the `override` section. While this section is not required, it can be used to set different options for different environments (staging, sandbox and so on).
 #### Settings up overrides

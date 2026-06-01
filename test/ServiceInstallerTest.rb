@@ -1,5 +1,6 @@
 require "test/unit"
 require_relative "../betterez/ServiceInstaller"
+require_relative "../betterez/ServiceSetupNormalizer"
 require_relative '../utils/HashOverrider'
 require_relative 'mocks/AwsInstanceMock'
 require_relative '../betterez/Helpers'
@@ -74,6 +75,30 @@ class ServiceInstallerTest <Test::Unit::TestCase
     service_settings.merge!(machine)
     installer=ServiceInstaller.new(service_settings,@aws_info)
     assert(installer.service_code.include?("/usr/bin/npm --prefix /home/bz-app/service3 start"))
+  end
+
+  def test_installer_for_second_app_in_multi_app_merge
+    root = {
+      :environment => 'staging',
+      :build_number => 1,
+      'deployment' => {},
+      'machine' => {},
+      'applications' => [
+        {
+          'deployment' => { 'service_name' => 'app-a', 'source' => { 'type' => 'git', 'repo' => 'x', 'branch_name' => 'master' } },
+          'machine' => { 'daemon_type' => 'systemd', 'start' => '/bin/run-a' }
+        },
+        {
+          'deployment' => { 'service_name' => 'app-b', 'source' => { 'type' => 'git', 'repo' => 'y', 'branch_name' => 'master' } },
+          'machine' => { 'daemon_type' => 'systemd', 'start' => '/bin/run-b' }
+        }
+      ]
+    }
+    app = root['applications'][1]
+    merged = ServiceSetupNormalizer.merged_app_service_setup(root, app)
+    installer = ServiceInstaller.new(merged, @aws_info)
+    assert_equal('/etc/systemd/system/app-b.service', installer.service_file_location)
+    assert(installer.service_code.include?('/home/bz-app/app-b'))
   end
 
   def test_service_file_content_sandbox

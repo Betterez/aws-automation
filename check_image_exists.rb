@@ -4,6 +4,7 @@ require 'open3'
 require 'optparse'
 require 'yaml'
 require_relative 'betterez/AwsInstance'
+require_relative 'betterez/ServiceSetupNormalizer'
 require_relative 'utils/HashOverrider'
 
 
@@ -38,20 +39,22 @@ if !File.exists?(image_settings[:service_file])
 end
 service_data=YAML.load_file(image_settings[:service_file])
 overrider.override_hash! service_data,image_settings[:environment]
+ServiceSetupNormalizer.sync_root_deployment_and_machine!(service_data) if ServiceSetupNormalizer.multi_app?(service_data)
 
-puts "checking image #{service_data["machine"]["image"]}"
-image_id=AwsInstance.get_ami_id(service_data["machine"]["image"])
+ami_image = ServiceSetupNormalizer.machine_image_for_ami(service_data)
+puts "checking image #{ami_image}"
+image_id=AwsInstance.get_ami_id(ami_image)
 if (image_id!=nil)
-  puts "image found for #{service_data["machine"]["image"]}: #{image_id}"
+  puts "image found for #{ami_image}: #{image_id}"
   exit 0
 end
 puts "image does not exist"
 exit 1 if !image_settings[:create_image]
 
-packer_file="#{image_settings[:packer_path]}/#{service_data["machine"]["image"]}.json"
+packer_file="#{image_settings[:packer_path]}/#{ami_image}.json"
 throw "can't find packer file #{packer_file}" if !File.exists?(packer_file)
 puts  "creating image..."
-packer_command="cd #{image_settings[:packer_path]} && packer build -var 'aws_access_key=#{authentication[:access_key_id]}' -var 'aws_secret_key=#{authentication[:secret_access_key]}' #{service_data["machine"]["image"]}.json"
+packer_command="cd #{image_settings[:packer_path]} && packer build -var 'aws_access_key=#{authentication[:access_key_id]}' -var 'aws_secret_key=#{authentication[:secret_access_key]}' #{ami_image}.json"
 stdin,stdout,stderr,wait_thr=Open3.popen3(packer_command)
 if wait_thr.value!=0
   puts "error: running #{packer_command}"
