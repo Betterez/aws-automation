@@ -4,6 +4,7 @@ require_relative 'VaultDriver'
 require_relative 'Transaction'
 require_relative 'ServiceInstaller'
 require_relative 'ServiceSetupNormalizer'
+require_relative 'GoogleCloudStorage'
 require_relative 'OssecManager'
 require_relative 'Syslogger'
 require_relative 'InstancesManager'
@@ -553,6 +554,30 @@ class AwsInstance
     case deployment.dig('source', 'type')
     when 'nop'
       notify "no code to load for #{service_name}"
+
+    when 'gcs_docker'
+      source = deployment['source'] || {}
+      bucket_name = source['bucket']
+      dir_name = source['dir_name']
+      raise ArgumentError, "gcs_docker requires source.bucket for #{service_name}" if bucket_name.nil? || bucket_name.to_s == ''
+      raise ArgumentError, "gcs_docker requires source.dir_name for #{service_name}" if dir_name.nil? || dir_name.to_s == ''
+
+      notify "GCS: Loading latest .tar from #{dir_name} in bucket #{bucket_name}"
+      local_path = GoogleCloudStorage.download_latest_file_of_bucket(bucket_name, dir_name, temp_folder)
+      remote_basename = GoogleCloudStorage::DOCKER_IMAGE_FILENAME
+      remote_upload_path = "/home/ubuntu/#{remote_basename}"
+      app_dir = "/home/bz-app/#{service_name}"
+
+      notify "Uploading docker image tar to #{remote_upload_path}"
+      upload_file_to_host(local_path, remote_upload_path)
+      notify run_ssh_command("sudo mkdir -p #{app_dir}")
+      notify run_ssh_command("sudo mv #{remote_upload_path} #{app_dir}/")
+      notify run_ssh_command("sudo chown -R bz-app:bz-app #{app_dir}")
+      if root_service_setup[:build_number]
+        run_ssh_command("echo #{root_service_setup[:build_number]} | sudo tee /home/bz-app/build_number.txt")
+      end
+      notify "GCS: Docker image tar ready at #{app_dir}/#{remote_basename}"
+
     when 'git'
       branch_name = deployment['source']['branch_name']
       git_repo = deployment['source']['repo']
