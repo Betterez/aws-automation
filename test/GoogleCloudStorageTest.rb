@@ -22,7 +22,7 @@ class GoogleCloudStorageTest < Test::Unit::TestCase
   def file_entry(name, updated_at, content = 'tar-data')
     file_mock = Object.new
     file_mock.define_singleton_method(:name) { name }
-    file_mock.define_singleton_method(:updated) { updated_at }
+    file_mock.define_singleton_method(:updated_at) { updated_at }
     file_mock.define_singleton_method(:download) do |dest|
       FileUtils.mkdir_p(File.dirname(dest))
       File.write(dest, content)

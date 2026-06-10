@@ -57,7 +57,7 @@ module GoogleCloudStorage
       f.name.match?(TAR_PATTERN) && !f.name.end_with?('/')
     end
 
-    latest_file = files.max_by(&:updated)
+    latest_file = files.max_by(&:updated_at)
     raise "No .tar(.gz) files found in #{dir_name} in #{bucket_name}" if latest_file.nil?
 
     downloaded_path = download_file_of_bucket(bucket_name, latest_file.name, output_dir)
