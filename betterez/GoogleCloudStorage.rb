@@ -29,7 +29,7 @@ module GoogleCloudStorage
   end
 
   def get_bucket(bucket_name)
-    storage.bucket bucket_name
+    storage.bucket(bucket_name, skip_lookup: true)
   end
 
   # Downloads object file_name from bucket_name into output_dir (preserving object path segments).
