@@ -24,6 +24,8 @@ module GoogleCloudStorage
       project_id: @account["gcs"]["project_id"],
     )
     raise "can't load storage" if @storage.nil?
+
+    @storage
   end
 
   def get_bucket(bucket_name)
