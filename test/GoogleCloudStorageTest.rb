@@ -48,7 +48,7 @@ class GoogleCloudStorageTest < Test::Unit::TestCase
     bucket_mock = bucket_with_files({ 'path/image.tar' => file_mock })
     storage_mock = Object.new
     storage_mock.instance_variable_set(:@buckets, { 'artifacts' => bucket_mock })
-    def storage_mock.bucket(name)
+    def storage_mock.bucket(name, **)
       @buckets[name]
     end
 
@@ -76,7 +76,7 @@ class GoogleCloudStorageTest < Test::Unit::TestCase
     )
     storage_mock = Object.new
     storage_mock.instance_variable_set(:@buckets, { 'artifacts' => bucket_mock })
-    def storage_mock.bucket(name)
+    def storage_mock.bucket(name, **)
       @buckets[name]
     end
 
@@ -100,7 +100,7 @@ class GoogleCloudStorageTest < Test::Unit::TestCase
     )
     storage_mock = Object.new
     storage_mock.instance_variable_set(:@buckets, { 'artifacts' => bucket_mock })
-    def storage_mock.bucket(name)
+    def storage_mock.bucket(name, **)
       @buckets[name]
     end
 
@@ -113,7 +113,7 @@ class GoogleCloudStorageTest < Test::Unit::TestCase
 
   def test_download_file_of_bucket_raises_when_bucket_missing
     storage_mock = Object.new
-    def storage_mock.bucket(_name)
+    def storage_mock.bucket(_name, **)
       nil
     end
 
