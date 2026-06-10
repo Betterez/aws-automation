@@ -12,9 +12,8 @@ module GoogleCloudStorage
   def get_account
     storage_account_data = Helpers.loadJSONData("settings/gcs-auth.json")
     raise 'gcs auth file does not exist!' unless File.exist?("settings/gcs-auth.json")
-    if storage_account_data["gcs"] == nil
-      raise ArgumentError.new("can't load account data")
-    end
+    raise "can't load account data" if storage_account_data["gcs"].nil?
+    storage_account_data
   end
 
   def storage
