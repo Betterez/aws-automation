@@ -726,6 +726,11 @@ class AwsInstance
                                 monitoring: {
                                   enabled: true, # required
                                 },
+                                metadata_options: {
+                                  http_tokens: 'required',
+                                  http_endpoint: 'enabled',
+                                  http_put_response_hop_limit: 2
+                                },
                                 subnet_id: instance_setup_data[:infra_data][:subnet],
                                 disable_api_termination: false)
     instance_data = resp.instances[0]
