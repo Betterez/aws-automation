@@ -2,6 +2,7 @@
 require_relative 'betterez/ServerCreator'
 require_relative 'betterez/Notifire'
 require_relative 'betterez/Helpers'
+require_relative 'betterez/ServiceSetupNormalizer'
 require_relative 'utils/HashOverrider'
 require('open3')
 require 'optparse'
@@ -77,6 +78,7 @@ rescue => err
 end
 exit 1 if machine==nil
 service_settings.merge!(machine)
+ServiceSetupNormalizer.sync_root_deployment_and_machine!(service_settings) if ServiceSetupNormalizer.multi_app?(service_settings)
 if service_settings[:servers_count].nil? || service_settings[:servers_count] == 0
   if service_settings['machine'] && service_settings['machine']['servers_count']
     service_settings[:servers_count] = service_settings['machine']['servers_count']

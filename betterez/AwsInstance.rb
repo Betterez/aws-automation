@@ -3,6 +3,8 @@ require_relative 'Notifire'
 require_relative 'VaultDriver'
 require_relative 'Transaction'
 require_relative 'ServiceInstaller'
+require_relative 'ServiceSetupNormalizer'
+require_relative 'GoogleCloudStorage'
 require_relative 'OssecManager'
 require_relative 'Syslogger'
 require_relative 'InstancesManager'
@@ -168,38 +170,66 @@ class AwsInstance
   # return +boolean+ true if so , or false if not, and +string+ for the output.
   def is_service_healthy?(service_setup_data)
     output = ''
-    return true if service_setup_data['deployment']['healthcheck']['perform'] != true
+    apps_to_check = ServiceSetupNormalizer.applications_list(service_setup_data).select do |app|
+      hc = app.dig('deployment', 'healthcheck')
+      hc.is_a?(Hash) && hc['perform'] == true
+    end
+    return [true, output] if apps_to_check.empty?
 
     begin
-      notify "healthcheck with #{service_setup_data['deployment']['healthcheck']['command']}"
-      output = run_ssh_command("cd /home/bz-app/#{@repository} && #{service_setup_data['deployment']['healthcheck']['command']}")
-      return true, output if output.include? service_setup_data['deployment']['healthcheck']['result']
+      apps_to_check.each do |app|
+        dep = app['deployment']
+        name = dep['service_name']
+        notify "healthcheck (#{name}) with #{dep['healthcheck']['command']}"
+        chunk = run_ssh_command("cd /home/bz-app/#{name} && #{dep['healthcheck']['command']}")
+        output += chunk.to_s
+        return [false, output] unless chunk.to_s.include?(dep['healthcheck']['result'])
+      end
+      [true, output]
     rescue StandardError => details
       notify(details)
-      return false, output
+      [false, output]
     end
-    [false, output]
   end
 
-  # restarts a service
-  def restart_service
-    ssh_command = "sudo service #{@repository} restart"
-    notify run_ssh_command ssh_command
+  # restarts all application units (systemd or upstart per app).
+  def restart_service(service_setup_data)
+    combined = +''
+    ServiceSetupNormalizer.applications_list(service_setup_data).each do |app|
+      name = app['deployment']['service_name']
+      dt = app.dig('machine', 'daemon_type')
+      ssh_command = if dt == 'systemd'
+                      "sudo systemctl restart #{name}.service"
+                    else
+                      "sudo service #{name} restart"
+                    end
+      notify run_ssh_command(ssh_command)
+      combined << ssh_command
+    end
+    combined
   end
 
-  # stops the machine service
-  def stop_service
-    ssh_command = "sudo service #{@repository} stop"
-    notify run_ssh_command ssh_command
+  # stops all application units (reverse order).
+  def stop_service(service_setup_data)
+    ServiceSetupNormalizer.applications_list(service_setup_data).to_a.reverse_each do |app|
+      name = app['deployment']['service_name']
+      dt = app.dig('machine', 'daemon_type')
+      ssh_command = if dt == 'systemd'
+                      "sudo systemctl stop #{name}.service"
+                    else
+                      "sudo service #{name} stop"
+                    end
+      notify run_ssh_command(ssh_command)
+    end
   end
 
   # updates the instance repository code and restarts the service
   # * +branch_name+ string. the branch to pull from.
   def update_instance_code(service_setup_data)
     service_setup_data[:install_type] = :existing_servers
-    stop_service
+    stop_service(service_setup_data)
     load_instance_code service_setup_data
-    restart_service
+    restart_service(service_setup_data)
   end
 
   # update the instance OS, might not work for kernel updates.
@@ -221,14 +251,15 @@ class AwsInstance
 
   # set up a new build number. create if does not exist
   # * +build_number+ Integer. the build number to set.
-  def update_build_number(build_number)
+  def update_build_number(service_setup_data)
+    build_number = service_setup_data[:build_number]
     result = ''
     client = Helpers.create_aws_ec2_client
     client.create_tags(dry_run: false,
                        resources: [@aws_instance_data.instance_id],
-                       tags: [{ key: 'Build-Number', value: build_number }])
+                       tags: [{ key: 'Build-Number', value: build_number.to_s }])
     result += run_ssh_command("echo #{build_number} | sudo tee /home/bz-app/build_number.txt")
-    result += run_ssh_command("sudo service #{@repository} restart")
+    result += restart_service(service_setup_data)
     result
   end
 
@@ -279,7 +310,7 @@ class AwsInstance
   # update logger config data for log entries if exists in vault
   def update_logger_config(service_setup_data)
     driver = VaultDriver.from_secrets_file service_setup_data[:environment]
-    service_name = service_setup_data['deployment']['service_name']
+    service_name = ServiceSetupNormalizer.infrastructure_primary_service_name(service_setup_data)
     logger = Syslogger.new(driver)
     if logger.check_record_exists(self)
       puts 'record already exists'
@@ -319,9 +350,12 @@ class AwsInstance
       Helpers.log 'loading aws keys'
       checker.get_all_aws_keys
       Helpers.log 'loading aws keys done'
-      Helpers.log "checking security settings for service #{service_setup_data['deployment']['service_name']}"
-      ok, error = checker.check_security_for_service(service_setup_data['deployment']['service_name'], driver, secrets_manager)
-      throw "service #{service_setup_data['deployment']['service_name']} can't be updated - #{error}" unless error.nil?
+      ServiceSetupNormalizer.applications_list(service_setup_data).each do |app|
+        svc = app['deployment']['service_name']
+        Helpers.log "checking security settings for service #{svc}"
+        _ok, error = checker.check_security_for_service(svc, driver, secrets_manager)
+        throw "service #{svc} can't be updated - #{error}" unless error.nil?
+      end
     end
   end
 
@@ -389,10 +423,11 @@ class AwsInstance
                              3
                            end
     puts "server :#{service_setup_data['machine']['servers_count']}"
-    ami_id = AwsInstance.get_ami_id(service_setup_data['machine']['image'])
+    ami_type = ServiceSetupNormalizer.machine_image_for_ami(service_setup_data)
+    ami_id = AwsInstance.get_ami_id(ami_type)
     unless ami_id
-      notifire.notify(1, "sorry! there is no ami id for type #{service_setup_data['machine']['image']}! Are you missing a packer run?")
-      throw "no ami id for type #{service_setup_data['machine']['image']}"
+      notifire.notify(1, "sorry! there is no ami id for type #{ami_type}! Are you missing a packer run?")
+      throw "no ami id for type #{ami_type}"
     end
     total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
@@ -488,12 +523,14 @@ class AwsInstance
 
   def update_init_file_and_restart(service_setup_data)
     throw 'nil aws_setup_information' if @aws_setup_information.nil?
-    service_installer = ServiceInstaller.new(service_setup_data, @aws_setup_information[service_setup_data[:environment].to_sym])
-    service_installer.install_service(self)
+    env = @aws_setup_information[service_setup_data[:environment].to_sym]
+    ServiceSetupNormalizer.applications_list(service_setup_data).each do |app|
+      merged = ServiceSetupNormalizer.merged_app_service_setup(service_setup_data, app)
+      ServiceInstaller.new(merged, env).install_service(self)
+    end
   end
 
   def load_instance_code(service_setup_data)
-    service_name = service_setup_data['deployment']['service_name']
     temp_folder = "temp/#{Thread.current.object_id}/"
     FileUtils.mkdir_p temp_folder unless Dir.exist?(temp_folder)
     existing_servers = ((service_setup_data.key? :install_type) && (service_setup_data[:install_type] == :existing_servers))
@@ -502,13 +539,49 @@ class AwsInstance
     else
       notify 'updating new servers' unless existing_servers
     end
-    case service_setup_data['deployment']['source']['type']
+    ServiceSetupNormalizer.applications_list(service_setup_data).each do |app|
+      load_single_application_code(service_setup_data, app, existing_servers, temp_folder)
+    end
+    sleep 5
+    notify 'all application code loaded.'
+  end
+
+  def load_single_application_code(root_service_setup, app_entry, existing_servers, temp_folder)
+    app = ServiceSetupNormalizer.merged_app_service_setup(root_service_setup, app_entry)
+    deployment = app['deployment'] || {}
+    machine = app['machine'] || {}
+    service_name = deployment['service_name']
+    case deployment.dig('source', 'type')
     when 'nop'
-      notify 'no code to load'
+      notify "no code to load for #{service_name}"
+
+    when 'gcs_docker'
+      source = deployment['source'] || {}
+      bucket_name = source['bucket']
+      dir_name = source['dir_name']
+      raise ArgumentError, "gcs_docker requires source.bucket for #{service_name}" if bucket_name.nil? || bucket_name.to_s == ''
+      raise ArgumentError, "gcs_docker requires source.dir_name for #{service_name}" if dir_name.nil? || dir_name.to_s == ''
+
+      notify "GCS: Loading latest .tar from #{dir_name} in bucket #{bucket_name}"
+      local_path = GoogleCloudStorage.download_latest_file_of_bucket(bucket_name, dir_name, temp_folder)
+      remote_basename = GoogleCloudStorage::DOCKER_IMAGE_FILENAME
+      remote_upload_path = "/home/ubuntu/#{remote_basename}"
+      app_dir = "/home/bz-app/#{service_name}"
+
+      notify "Uploading docker image tar to #{remote_upload_path}"
+      upload_file_to_host(local_path, remote_upload_path)
+      notify run_ssh_command("sudo mkdir -p #{app_dir}")
+      notify run_ssh_command("sudo mv #{remote_upload_path} #{app_dir}/")
+      notify run_ssh_command("sudo chown -R bz-app:bz-app #{app_dir}")
+      if root_service_setup[:build_number]
+        run_ssh_command("echo #{root_service_setup[:build_number]} | sudo tee /home/bz-app/build_number.txt")
+      end
+      notify "GCS: Docker image tar ready at #{app_dir}/#{remote_basename}"
+
     when 'git'
-      branch_name = service_setup_data['deployment']['source']['branch_name']
-      git_repo = service_setup_data['deployment']['source']['repo']
-      notify "git: loading from #{git_repo} on branch #{branch_name} .."
+      branch_name = deployment['source']['branch_name']
+      git_repo = deployment['source']['repo']
+      notify "git (#{service_name}): loading from #{git_repo} on branch #{branch_name} .."
       if existing_servers
         ssh_command = " if [ -d '/home/bz-app/#{service_name}/.git' ]; then echo 'repository ok'; else echo 'not exists'; fi"
         results = run_ssh_command ssh_command
@@ -522,8 +595,8 @@ class AwsInstance
         ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo} #{service_name}'"
         run_ssh_command ssh_command
         unless branch_name == 'master'
-          notify "switching to #{branch_name}"
-          ssh_command = "cd /home/bz-app/#{git_repo} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
+          notify "switching #{service_name} to #{branch_name}"
+          ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
           run_ssh_command ssh_command
         end
       end
@@ -537,13 +610,12 @@ class AwsInstance
         run_ssh_command ssh_command
       end
     when 's3'
-      notify 'loading from s3'
-      filename = service_setup_data['deployment']['source']['bucket']
-      # puts "loading #{filename}"
+      notify "loading #{service_name} from s3"
+      filename = deployment['source']['bucket']
       filename += '.tar.gz' if filename.index('tar.gz').nil?
       notify 'creating s3 client'
       s3 = Aws::S3::Client.new(region: 'us-east-1', credentials: Helpers.create_aws_authentication_token)
-      resp = s3.list_objects(bucket: service_setup_data['deployment']['source']['bucket'],
+      resp = s3.list_objects(bucket: deployment['source']['bucket'],
                              delimiter: 'Delimiter',
                              encoding_type: 'url')
       notify 'loading objects'
@@ -558,7 +630,7 @@ class AwsInstance
       notify "#{selected_object.key} was selected, pulling to local temp storage... "
       notify "local file name #{temp_folder + filename}"
       File.open(temp_folder + filename, 'wb') do |file|
-        s3.get_object(bucket: service_setup_data['deployment']['source']['bucket'], key: selected_object.key) do |chunk|
+        s3.get_object(bucket: deployment['source']['bucket'], key: selected_object.key) do |chunk|
           file.write(chunk)
         end
       end
@@ -570,23 +642,22 @@ class AwsInstance
       notify run_ssh_command("tar -xzf #{filename}")
       notify run_ssh_command("sudo mkdir -p /home/bz-app/#{service_name} && sudo chown -R bz-app:bz-app /home/bz-app/")
       notify run_ssh_command("sudo mv /home/ubuntu/#{service_name} /home/bz-app/#{service_name} && sudo chown bz-app /home/bz-app/#{service_name}")
-      run_ssh_command("echo #{service_setup_data[:build_number]} | sudo tee /home/bz-app/build_number.txt")
+      run_ssh_command("echo #{root_service_setup[:build_number]} | sudo tee /home/bz-app/build_number.txt")
+    else
+      throw "unknown deployment.source.type for #{service_name}: #{deployment['source'].inspect}"
     end
-    sleep 5
-    if !service_setup_data['machine']['install'].nil? && !service_setup_data['machine']['install'].empty?
-      notify 'installing....'
-      service_setup_data['machine']['install'].each do |command|
+    if !machine['install'].nil? && !machine['install'].empty?
+      notify "installing #{service_name}...."
+      machine['install'].each do |command|
         next if command == ''
 
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
         run_queued_ssh_command(ssh_command, true)
-        # run_ssh_in_terminal(ssh_command)
-        # notify run_ssh_command(ssh_command)
       end
-    elsif !service_setup_data['machine']['fast_install'].nil? && !service_setup_data['machine']['fast_install'].empty?
-      notify 'fast installing....'
-      service_setup_data['machine']['fast_install'].each do |command|
+    elsif !machine['fast_install'].nil? && !machine['fast_install'].empty?
+      notify "fast installing #{service_name}...."
+      machine['fast_install'].each do |command|
         next if command == ''
 
         notify "running #{command}"
@@ -594,9 +665,9 @@ class AwsInstance
         run_queued_ssh_command(ssh_command, false)
       end
     else
-      notify 'nothing to install...'
+      notify "nothing to install for #{service_name}..."
     end
-    notify 'service code loaded.'
+    notify "service code loaded for #{service_name}."
   end
 
   def run_queued_ssh_command(command, run_in_terminal)
@@ -654,6 +725,11 @@ class AwsInstance
                                 },
                                 monitoring: {
                                   enabled: true, # required
+                                },
+                                metadata_options: {
+                                  http_tokens: 'required',
+                                  http_endpoint: 'enabled',
+                                  http_put_response_hop_limit: 2
                                 },
                                 subnet_id: instance_setup_data[:infra_data][:subnet],
                                 disable_api_termination: false)
@@ -720,9 +796,11 @@ class AwsInstance
     begin
       # load service code
       aws_instance.load_instance_code(service_setup_data)
-      # upload service file
-      service_installer = ServiceInstaller.new service_setup_data, current_environment_data
-      service_installer.install_service aws_instance
+      # upload service file(s)
+      ServiceSetupNormalizer.applications_list(service_setup_data).each do |app|
+        merged = ServiceSetupNormalizer.merged_app_service_setup(service_setup_data, app)
+        ServiceInstaller.new(merged, current_environment_data).install_service(aws_instance)
+      end
       if transaction.reached_goal?
         aws_instance.terminate_instance
         return nil
@@ -730,7 +808,7 @@ class AwsInstance
       # File.open("service_install#{Thread.current.object_id}.log", 'w') { |file| file.write(install_data) }
       sleep 8
       notifire.notify(1, 'restarting service')
-      aws_instance.restart_service
+      aws_instance.restart_service(service_setup_data)
       if transaction.reached_goal?
         aws_instance.terminate_instance
         return nil
@@ -757,7 +835,7 @@ class AwsInstance
             break
           else
             if failed_attempts == 2
-              aws_instance.restart_service
+              aws_instance.restart_service(service_setup_data)
               sleep 20
             end
             notifire.notify(1, "#{Thread.current.object_id} - service is not healthy, retrying")
@@ -778,7 +856,7 @@ class AwsInstance
         notifire.notify(1, "instance doesn't have health check configurations.")
       end
       notifire.notify(1, 'updating build number')
-      aws_instance.update_build_number(service_setup_data[:build_number])
+      aws_instance.update_build_number(service_setup_data)
       if service_setup_data[:offline_mode]
         aws_instance.update_tag_value('Online','no')
       else

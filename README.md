@@ -16,6 +16,7 @@ Required libraries
 5. mixlib-shellout
 6. redis
 7. rubocop - is a good choice for reformatting. not a must.
+8. google-cloud-storage
 
 Documentation
 -------------

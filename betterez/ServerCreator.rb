@@ -131,7 +131,7 @@ class ServerCreator
           notify("updating code base and restarting for #{instance.aws_instance_data.instance_id}")
           notify(instance.update_instance_code(service_setup_data))
           notify("done, updating Build Number to #{service_setup_data[:build_number]}...")
-          notify(instance.update_build_number(service_setup_data[:build_number]))
+          notify(instance.update_build_number(service_setup_data))
           notify('updating init file...')
           notify("done with #{instance.update_init_file_and_restart service_setup_data}")
           notify('updating logger config...')
