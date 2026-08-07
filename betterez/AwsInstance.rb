@@ -861,7 +861,7 @@ class AwsInstance
       end
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data)
-      if service_setup_data[:offline_mode]
+      if service_setup_data[:offline_mode] || service_setup_data[:ami]
         aws_instance.update_tag_value('Online','no')
       else
         aws_instance.update_tag_value('Online','yes')
