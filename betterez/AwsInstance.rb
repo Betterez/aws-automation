@@ -309,6 +309,10 @@ class AwsInstance
   ## update_logger_config
   # update logger config data for log entries if exists in vault
   def update_logger_config(service_setup_data)
+    if service_setup_data[:use_secrets_manager]
+      puts 'skipping logger config update (secrets manager mode)'
+      return 'skipped'
+    end
     driver = VaultDriver.from_secrets_file service_setup_data[:environment]
     service_name = ServiceSetupNormalizer.infrastructure_primary_service_name(service_setup_data)
     logger = Syslogger.new(driver)
@@ -857,7 +861,7 @@ class AwsInstance
       end
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data)
-      if service_setup_data[:offline_mode]
+      if service_setup_data[:offline_mode] || service_setup_data[:ami]
         aws_instance.update_tag_value('Online','no')
       else
         aws_instance.update_tag_value('Online','yes')
