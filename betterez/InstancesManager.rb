@@ -1,5 +1,3 @@
-require_relative  'AwsInstance'
-
 class InstancesManager
   INITIAL_STATUS="initial"
   READY_STATUS="ready"

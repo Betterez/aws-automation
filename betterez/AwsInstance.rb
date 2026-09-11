@@ -8,6 +8,7 @@ require_relative 'GoogleCloudStorage'
 require_relative 'OssecManager'
 require_relative 'Syslogger'
 require_relative 'InstancesManager'
+require_relative 'AmiBuilder'
 require 'rubygems'
 require 'pty'
 require 'net/ssh'
@@ -17,6 +18,7 @@ require 'fileutils'
 class AwsInstance
   @@time_to_wait = 15
   MAX_THREAD_WAITING = 80
+  MAX_AMI_WAIT_ATTEMPTS = 360
   # setting hash
   attr_accessor(:aws_setup_information)
   attr_accessor(:notifire)
@@ -421,19 +423,24 @@ class AwsInstance
     instances_manager = InstancesManager.new
 
     notifire.notify(1, 'getting ami id')
-    total_servers_number = if service_setup_data[:debug] || service_setup_data[:ami]
-                             1
-                           else
-                             3
-                           end
+    AmiBuilder.normalize_ami_server_count!(service_setup_data)
+    total_servers_number = AmiBuilder.servers_to_launch(service_setup_data)
     puts "server :#{service_setup_data['machine']['servers_count']}"
     ami_type = ServiceSetupNormalizer.machine_image_for_ami(service_setup_data)
-    ami_id = AwsInstance.get_ami_id(ami_type)
-    unless ami_id
+    ami_id = if ami_type && ami_type.to_s.strip != ''
+               AwsInstance.get_ami_id(ami_type)
+             end
+    if service_setup_data[:ami]
+      begin
+        AmiBuilder.ensure_base_ami!(ami_type, ami_id)
+      rescue RuntimeError => error
+        notifire.notify(1, error.message)
+        raise
+      end
+    elsif ami_id.nil?
       notifire.notify(1, "sorry! there is no ami id for type #{ami_type}! Are you missing a packer run?")
       throw "no ami id for type #{ami_type}"
     end
-    total_servers_number = service_setup_data[:servers_count] * 2 if service_setup_data[:servers_count] > 1
     current_environment_data = aws_setup_information[service_setup_data[:environment].to_sym]
     throw "no infrastructure data for #{service_setup_data[:environment]}"  if current_environment_data.nil?
     puts "total_servers_number=#{total_servers_number}"
@@ -494,21 +501,18 @@ class AwsInstance
       instances_manager.limit_number_of_instances_with_status(InstancesManager::READY_STATUS, service_setup_data[:servers_count])
     end
     instances_manager.delete_and_terminate_instances_with_status('initial')
+    if service_setup_data[:ami]
+      AmiBuilder.build_ami_and_terminate_builders(instances_manager, service_setup_data, notifire)
+      return []
+    end
     # remove cloudwatch cache.
     # set ossec
     instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
       instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
-      instance.update_ossec_settings unless service_setup_data[:ami]
+      instance.update_ossec_settings
     end
     notifire.notify 1, 'done'
     notifire.notify 1, "#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} servers created."
-    if service_setup_data[:ami]
-      notifire.notify 1, 'creating ami.'
-      instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)[0].create_ami(service_setup_data)
-      notifire.notify 1, 'terminating instance.'
-      instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)[0].terminate_instance
-      return []
-    end
     instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
   end
 
@@ -739,6 +743,7 @@ class AwsInstance
                                 disable_api_termination: false)
     instance_data = resp.instances[0]
     aws_instance = AwsInstance.new(instance_data, aws_setup_information)
+    instances_manager.add_instance(aws_instance) if service_setup_data[:ami]
     notifire.notify 1, "#{Thread.current.object_id} waiting for it to run"
     aws_instance.wait_for_state('running')
     # registers iam for cloud watch.
@@ -1063,11 +1068,19 @@ class AwsInstance
       name: name
     )
     print "\r\nwaiting for the image to be ready"
+    attempts = 0
     loop do
       resp1 = client.describe_images(
-        image_ids: [resp.image_id] # TODO: check the actual format
+        image_ids: [resp.image_id]
       )
-      break if resp1.images[0][:state] == 'available'
+      image = resp1.images && resp1.images[0]
+      if image
+        state = image[:state].to_s
+        break if state == 'available'
+        raise "ami creation failed with state #{state}" if state == 'failed'
+      end
+      attempts += 1
+      raise "timed out waiting for ami #{resp.image_id}" if attempts >= AwsInstance::MAX_AMI_WAIT_ATTEMPTS
 
       sleep(10)
       print '.'
