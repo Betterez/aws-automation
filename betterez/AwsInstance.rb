@@ -9,6 +9,7 @@ require_relative 'OssecManager'
 require_relative 'Syslogger'
 require_relative 'InstancesManager'
 require_relative 'AmiBuilder'
+require_relative 'OnlineTagHandler'
 require 'rubygems'
 require 'pty'
 require 'net/ssh'
@@ -16,6 +17,7 @@ require 'net/scp'
 require 'fileutils'
 
 class AwsInstance
+  include OnlineTagHandler
   @@time_to_wait = 15
   MAX_THREAD_WAITING = 80
   MAX_AMI_WAIT_ATTEMPTS = 360
@@ -867,9 +869,9 @@ class AwsInstance
       notifire.notify(1, 'updating build number')
       aws_instance.update_build_number(service_setup_data)
       if service_setup_data[:offline_mode] || service_setup_data[:ami]
-        aws_instance.update_tag_value('Online','no')
+        aws_instance.apply_online_tag(false)
       else
-        aws_instance.update_tag_value('Online','yes')
+        aws_instance.apply_online_tag(true)
       end
       if service_setup_data['deployment']['healthcheck'].key?('path')
         aws_instance.update_tag_value('Healtcheck-Path', service_setup_data['deployment']['healthcheck']['path'])
