@@ -1,4 +1,5 @@
 require 'test/unit'
+require 'base64'
 require_relative '../betterez/AmiBuilder'
 require_relative '../betterez/InstancesManager'
 
@@ -112,5 +113,46 @@ class AmiBuilderTest < Test::Unit::TestCase
     assert_equal('terminated', baker.status)
     assert_equal('terminated', spare.status)
     assert_equal(0, manager.get_all_instances_number)
+  end
+
+  def test_with_ami_cleanup_terminates_after_successful_provisioning_block
+    manager = InstancesManager.new
+    baker = AmiBuilderMock.new
+    manager.add_instance(baker)
+
+    result = AmiBuilder.with_ami_cleanup(manager, nil) { :provisioning_done }
+
+    assert_equal(:provisioning_done, result)
+    assert_equal('terminated', baker.status)
+    assert_equal(0, manager.get_all_instances_number)
+  end
+
+  def test_with_ami_cleanup_terminates_if_provisioning_raises
+    manager = InstancesManager.new
+    baker = AmiBuilderMock.new
+    manager.add_instance(baker)
+
+    assert_raise(RuntimeError) do
+      AmiBuilder.with_ami_cleanup(manager, nil) { raise 'jenkins timeout during npm install' }
+    end
+
+    assert_equal('terminated', baker.status)
+    assert_equal(0, manager.get_all_instances_number)
+  end
+
+  def test_builder_launch_options_self_terminate_after_ttl
+    options = AmiBuilder.builder_launch_options
+    assert_equal('terminate', options[:instance_initiated_shutdown_behavior])
+    decoded = Base64.decode64(options[:user_data])
+    assert_match(/shutdown/, decoded)
+    assert_match(/10800/, decoded)
+    assert_no_match(/\/etc\/cron\.d/, decoded)
+    assert_no_match(/echo .* >/ , decoded)
+  end
+
+  def test_disk_cleanup_removes_ttl_files_before_image_snapshot
+    command = AmiBuilder.disk_cleanup_command
+    assert_match(/ami-builder-ttl/, command)
+    assert_match(/user-data\.txt/, command)
   end
 end
