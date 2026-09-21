@@ -87,6 +87,7 @@ end
 if service_settings[:servers_count].nil? || service_settings[:servers_count] == 0
     service_settings[:servers_count] = 1
 end
+service_settings[:servers_count] = 1 if service_settings[:ami]
 if service_settings["deployment"]["service_type"] == 'http' && (service_settings["deployment"]["path_name"].nil? || service_settings["deployment"]["path_name"] == '')
     throw 'HTTP service must have a path.'
 end
