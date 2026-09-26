@@ -2,6 +2,7 @@
 require_relative 'ServiceSetupNormalizerTest'
 require_relative 'GoogleCloudStorageTest'
 require_relative 'AwsInstanceGcsDockerTest'
+require_relative 'AwsInstanceSshTest'
 require_relative 'AwsInstanceLoggerConfigTest'
 require_relative 'OnlineTagHandlerTest'
 require_relative 'ParserTest'

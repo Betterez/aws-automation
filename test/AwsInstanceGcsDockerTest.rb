@@ -57,6 +57,11 @@ class AwsInstanceGcsDockerTest < Test::Unit::TestCase
       ''
     end
 
+    def run_ssh_command!(command, _loops = 5, _delay = 5)
+      @commands << command
+      ''
+    end
+
     def run_queued_ssh_command(command, _run_in_terminal)
       @commands << command
     end
@@ -109,8 +114,81 @@ class AwsInstanceGcsDockerTest < Test::Unit::TestCase
     assert(@instance.commands.any? { |c| c.include?('mkdir -p /home/bz-app/btrz-api-bpes-java') })
     assert(@instance.commands.any? { |c| c == 'sudo mv /home/ubuntu/image.tar /home/bz-app/btrz-api-bpes-java/' })
     assert(@instance.commands.any? { |c| c.include?('chown -R bz-app:bz-app /home/bz-app/btrz-api-bpes-java') })
-    assert(@instance.commands.any? { |c| c.include?('echo 42') })
+    assert_equal(1, @instance.commands.count { |c| c == 'echo 42 | sudo tee /home/bz-app/build_number.txt' })
     assert(@instance.commands.none? { |c| c.include?('tar -xzf') })
+  end
+
+  def test_git_source_writes_build_number_file_once
+    @instance.load_single_application_code(
+      { build_number: 57 },
+      {
+        'deployment' => {
+          'service_name' => 'btrz-api-sales',
+          'source' => { 'type' => 'git', 'repo' => 'git@github.com:Betterez/btrz-api-sales.git', 'branch_name' => 'master' }
+        },
+        'machine' => {}
+      },
+      false,
+      @temp_dir
+    )
+
+    assert_equal(1, @instance.commands.count { |c| c == 'echo 57 | sudo tee /home/bz-app/build_number.txt' })
+  end
+
+  def test_git_source_on_existing_servers_writes_build_number_file
+    instance = @instance
+    def instance.run_ssh_command(command, _loops = 5, _delay = 5)
+      @commands << command
+      command.include?('.git') ? 'repository ok' : ''
+    end
+    instance.load_single_application_code(
+      { build_number: 58 },
+      {
+        'deployment' => {
+          'service_name' => 'btrz-api-sales',
+          'source' => { 'type' => 'git', 'repo' => 'git@github.com:Betterez/btrz-api-sales.git', 'branch_name' => 'master' }
+        },
+        'machine' => {}
+      },
+      true,
+      @temp_dir
+    )
+
+    assert_equal(1, instance.commands.count { |c| c == 'echo 58 | sudo tee /home/bz-app/build_number.txt' })
+  end
+
+  def test_gcs_docker_raises_when_build_number_missing
+    assert_raise(ArgumentError) do
+      @instance.load_single_application_code({}, app_entry, false, @temp_dir)
+    end
+  end
+
+  def test_git_source_raises_when_build_number_missing
+    assert_raise(ArgumentError) do
+      @instance.load_single_application_code(
+        {},
+        {
+          'deployment' => {
+            'service_name' => 'btrz-api-sales',
+            'source' => { 'type' => 'git', 'repo' => 'git@github.com:Betterez/btrz-api-sales.git', 'branch_name' => 'master' }
+          },
+          'machine' => {}
+        },
+        false,
+        @temp_dir
+      )
+    end
+  end
+
+  def test_nop_source_does_not_write_build_number_file
+    @instance.load_single_application_code(
+      { build_number: 59 },
+      { 'deployment' => { 'service_name' => 'svc', 'source' => { 'type' => 'nop' } }, 'machine' => {} },
+      false,
+      @temp_dir
+    )
+
+    assert(@instance.commands.none? { |c| c.include?('build_number.txt') })
   end
 
   def test_gcs_docker_requires_bucket_and_dir_name

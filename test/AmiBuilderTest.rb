@@ -155,4 +155,9 @@ class AmiBuilderTest < Test::Unit::TestCase
     assert_match(/ami-builder-ttl/, command)
     assert_match(/user-data\.txt/, command)
   end
+
+  def test_disk_cleanup_flushes_filesystem_after_removing_files
+    command = AmiBuilder.disk_cleanup_command
+    assert_match(/;\s*sync\s*;\s*true\z/, command)
+  end
 end

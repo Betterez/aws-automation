@@ -253,8 +253,8 @@ class AwsInstance
     run_ssh_command('node --version')
   end
 
-  # set up a new build number. create if does not exist
-  # * +build_number+ Integer. the build number to set.
+  # tags the instance with the new build number and restarts the service.
+  # build_number.txt is written by load_single_application_code.
   def update_build_number(service_setup_data)
     build_number = service_setup_data[:build_number]
     result = ''
@@ -262,16 +262,21 @@ class AwsInstance
     client.create_tags(dry_run: false,
                        resources: [@aws_instance_data.instance_id],
                        tags: [{ key: 'Build-Number', value: build_number.to_s }])
-    result += run_ssh_command("echo #{build_number} | sudo tee /home/bz-app/build_number.txt")
     result += restart_service(service_setup_data)
     result
+  end
+
+  def write_build_number_file(build_number)
+    raise ArgumentError, 'build_number is required to write build_number.txt' if build_number.to_s.strip.empty?
+
+    run_ssh_command!("echo #{build_number} | sudo tee /home/bz-app/build_number.txt")
   end
 
   # run ssh command tried for +loops+ loops
   def run_ssh_command(ssh_command, loops = 5, command_delay = 5)
     result = ''
-    done = true
     (0...loops).each do
+      done = true
       begin
         Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
           result = ssh.exec!(ssh_command).to_s
@@ -283,6 +288,28 @@ class AwsInstance
       break if done
     end
     result
+  end
+
+  # like run_ssh_command, but raises if the connection keeps failing or the command exits non-zero.
+  def run_ssh_command!(ssh_command, loops = 5, command_delay = 5)
+    last_error = nil
+    loops.times do
+      status = {}
+      output = nil
+      begin
+        Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
+          output = ssh.exec!(ssh_command, status: status).to_s
+        end
+      rescue StandardError => error
+        last_error = error
+        sleep command_delay
+        next
+      end
+      return output if status[:exit_code] == 0
+
+      raise "ssh command failed with exit code #{status[:exit_code]}: #{ssh_command}\n#{output}"
+    end
+    raise "ssh command failed after #{loops} attempts: #{ssh_command} (#{last_error})"
   end
 
   ## runs ssh command and streams the output to stdout
@@ -340,10 +367,10 @@ class AwsInstance
 
       if service_setup_data[:use_secrets_manager]
         puts 'preparing secrets manager'
-        secrets_manager = SecretsManager.new        
+        secrets_manager = SecretsManager.new
         secrets_manager.environment = service_setup_data[:environment]
         puts 'secrets manager prepared'
-      else        
+      else
         Helpers.log "loading vault infor for #{service_setup_data[:environment]}"
         driver = VaultDriver.from_secrets_file service_setup_data[:environment]
         if aws_setup_information.key?(:secrets)
@@ -594,9 +621,7 @@ class AwsInstance
       notify run_ssh_command("sudo mkdir -p #{app_dir}")
       notify run_ssh_command("sudo mv #{remote_upload_path} #{app_dir}/")
       notify run_ssh_command("sudo chown -R bz-app:bz-app #{app_dir}")
-      if root_service_setup[:build_number]
-        run_ssh_command("echo #{root_service_setup[:build_number]} | sudo tee /home/bz-app/build_number.txt")
-      end
+      write_build_number_file(root_service_setup[:build_number])
       notify "GCS: Docker image tar ready at #{app_dir}/#{remote_basename}"
 
     when 'git'
@@ -630,6 +655,7 @@ class AwsInstance
         ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
         run_ssh_command ssh_command
       end
+      write_build_number_file(root_service_setup[:build_number])
     when 's3'
       notify "loading #{service_name} from s3"
       filename = deployment['source']['bucket']
@@ -663,7 +689,7 @@ class AwsInstance
       notify run_ssh_command("tar -xzf #{filename}")
       notify run_ssh_command("sudo mkdir -p /home/bz-app/#{service_name} && sudo chown -R bz-app:bz-app /home/bz-app/")
       notify run_ssh_command("sudo mv /home/ubuntu/#{service_name} /home/bz-app/#{service_name} && sudo chown bz-app /home/bz-app/#{service_name}")
-      run_ssh_command("echo #{root_service_setup[:build_number]} | sudo tee /home/bz-app/build_number.txt")
+      write_build_number_file(root_service_setup[:build_number])
     else
       throw "unknown deployment.source.type for #{service_name}: #{deployment['source'].inspect}"
     end
@@ -707,7 +733,7 @@ class AwsInstance
         sleep 5
         sleep_counter += 1
         puts "clock #{sleep_counter} out of 120\r\n"
-        if sleep_counter > 120 # 10 minutes max          
+        if sleep_counter > 120 # 10 minutes max
           Thread.kill(command_thread)
           puts "COMMAND KILLED: #{command}"
           break
