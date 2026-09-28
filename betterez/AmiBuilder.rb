@@ -1,6 +1,9 @@
+require 'base64'
 require_relative 'InstancesManager'
 
 class AmiBuilder
+  BUILDER_TTL_SECONDS = 10800
+
   def self.servers_to_launch(service_setup_data)
     return 1 if service_setup_data[:ami]
 
@@ -23,21 +26,45 @@ class AmiBuilder
     end
   end
 
-  def self.build_ami_and_terminate_builders(instances_manager, service_setup_data, notifire)
+  def self.builder_launch_options
+    {
+      instance_initiated_shutdown_behavior: 'terminate',
+      user_data: Base64.strict_encode64(builder_ttl_user_data)
+    }
+  end
+
+  def self.disk_cleanup_command
+    'sudo rm -f /etc/cron.d/ami-builder-ttl /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/user-data.txt.i; sudo find /var/lib/cloud -name user-data.txt -delete 2>/dev/null; true'
+  end
+
+  def self.with_ami_cleanup(instances_manager, notifire)
     previous_term = trap_cleanup_signal('TERM', instances_manager)
     previous_int = trap_cleanup_signal('INT', instances_manager)
     begin
-      ready = instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
-      raise 'no ready instance to create ami' if ready.nil? || ready.empty?
-
-      notify(notifire, 'creating ami.')
-      ready[0].create_ami(service_setup_data)
+      yield
     ensure
       restore_signal('TERM', previous_term)
       restore_signal('INT', previous_int)
       notify(notifire, 'terminating instance(s).')
       instances_manager.delete_and_terminate_all_instances
     end
+  end
+
+  def self.build_ami_and_terminate_builders(instances_manager, service_setup_data, notifire)
+    with_ami_cleanup(instances_manager, notifire) do
+      ready = instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
+      raise 'no ready instance to create ami' if ready.nil? || ready.empty?
+
+      notify(notifire, 'creating ami.')
+      ready[0].create_ami(service_setup_data)
+    end
+  end
+
+  def self.builder_ttl_user_data
+    <<~SHELL
+      #!/bin/bash
+      nohup /bin/bash -c 'sleep #{BUILDER_TTL_SECONDS} && /sbin/shutdown -h now' >/dev/null 2>&1 &
+    SHELL
   end
 
   def self.notify(notifire, message)
@@ -57,5 +84,5 @@ class AmiBuilder
     Signal.trap(signal_name, 'DEFAULT')
   end
 
-  private_class_method :notify, :trap_cleanup_signal, :restore_signal
+  private_class_method :builder_ttl_user_data, :notify, :trap_cleanup_signal, :restore_signal
 end

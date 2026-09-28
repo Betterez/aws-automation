@@ -420,7 +420,6 @@ class AwsInstance
   # * +aws_setup_information+ - environment and keys data
   def self.create_aws_instances(service_setup_data, aws_setup_information, notifire)
     throw 'no aws setup info' if aws_setup_information.nil?
-    instance_threads = []
     instances_data = []
     instances_manager = InstancesManager.new
 
@@ -463,12 +462,37 @@ class AwsInstance
       end
     end
     run_pci_dss_check(service_setup_data, aws_setup_information)
+    if service_setup_data[:ami]
+      AmiBuilder.with_ami_cleanup(instances_manager, notifire) do
+        launch_and_wait_for_instances(service_setup_data, aws_setup_information, notifire, instances_manager, instances_data)
+        ready = instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
+        raise 'no ready instance to create ami' if ready.nil? || ready.empty?
+
+        notifire.notify 1, 'creating ami.'
+        ready[0].create_ami(service_setup_data)
+      end
+      return []
+    end
+    launch_and_wait_for_instances(service_setup_data, aws_setup_information, notifire, instances_manager, instances_data)
+    # remove cloudwatch cache.
+    # set ossec
+    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
+      instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
+      instance.update_ossec_settings
+    end
+    notifire.notify 1, 'done'
+    notifire.notify 1, "#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} servers created."
+    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
+  end
+
+  def self.launch_and_wait_for_instances(service_setup_data, aws_setup_information, notifire, instances_manager, instances_data)
+    instance_threads = []
     transaction = Transaction.new service_setup_data[:servers_count]
     limiter = Random.new
     instances_data.each do |instance_data|
       sleep ( 0.1 + limiter.rand(2000) / 100)
       instance_threads << Thread.new do
-        aws_instance = create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction, instances_manager)
+        create_service_instance(service_setup_data, aws_setup_information, notifire, instance_data, transaction, instances_manager)
       end
     end
     keep_waiting = true
@@ -487,7 +511,7 @@ class AwsInstance
     puts ''
     puts "..:: done waiting: all_thread_wait:#{all_thread_wait}, keep_waiting=#{keep_waiting} ::.."
     puts ''
-    instance_threads.each(&:kill)
+    instance_threads.each(&:kill) unless service_setup_data[:ami]
 
     if instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length < service_setup_data[:servers_count]
       if service_setup_data[:debug]
@@ -503,19 +527,6 @@ class AwsInstance
       instances_manager.limit_number_of_instances_with_status(InstancesManager::READY_STATUS, service_setup_data[:servers_count])
     end
     instances_manager.delete_and_terminate_instances_with_status('initial')
-    if service_setup_data[:ami]
-      AmiBuilder.build_ami_and_terminate_builders(instances_manager, service_setup_data, notifire)
-      return []
-    end
-    # remove cloudwatch cache.
-    # set ossec
-    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).each do |instance|
-      instance.run_ssh_command 'rm -rf /var/tmp/aws-mon/instance-id'
-      instance.update_ossec_settings
-    end
-    notifire.notify 1, 'done'
-    notifire.notify 1, "#{instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length} servers created."
-    instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
   end
 
   ## checks if this instance has ossec agent on it
@@ -722,27 +733,31 @@ class AwsInstance
     selected_instance_type = service_setup_data['machine']['instance_type']
     selected_instance_type = current_environment_data[:instanceType] if selected_instance_type.nil?
 
-    resp = client.run_instances(dry_run: false,
-                                image_id: instance_setup_data[:ami_id],
-                                min_count: 1,
-                                max_count: 1,
-                                key_name: current_environment_data[:keyName],
-                                security_group_ids: [instance_setup_data[:infra_data][:securityGroup]],
-                                instance_type: selected_instance_type,
-                                placement: {
-                                  availability_zone: instance_setup_data[:infra_data][:availabilityZone],
-                                  tenancy: 'default'
-                                },
-                                monitoring: {
-                                  enabled: true, # required
-                                },
-                                metadata_options: {
-                                  http_tokens: 'required',
-                                  http_endpoint: 'enabled',
-                                  http_put_response_hop_limit: 2
-                                },
-                                subnet_id: instance_setup_data[:infra_data][:subnet],
-                                disable_api_termination: false)
+    run_instances_params = {
+      dry_run: false,
+      image_id: instance_setup_data[:ami_id],
+      min_count: 1,
+      max_count: 1,
+      key_name: current_environment_data[:keyName],
+      security_group_ids: [instance_setup_data[:infra_data][:securityGroup]],
+      instance_type: selected_instance_type,
+      placement: {
+        availability_zone: instance_setup_data[:infra_data][:availabilityZone],
+        tenancy: 'default'
+      },
+      monitoring: {
+        enabled: true
+      },
+      metadata_options: {
+        http_tokens: 'required',
+        http_endpoint: 'enabled',
+        http_put_response_hop_limit: 2
+      },
+      subnet_id: instance_setup_data[:infra_data][:subnet],
+      disable_api_termination: false
+    }
+    run_instances_params.merge!(AmiBuilder.builder_launch_options) if service_setup_data[:ami]
+    resp = client.run_instances(run_instances_params)
     instance_data = resp.instances[0]
     aws_instance = AwsInstance.new(instance_data, aws_setup_information)
     instances_manager.add_instance(aws_instance) if service_setup_data[:ami]
@@ -1062,12 +1077,14 @@ class AwsInstance
   end
 
   def create_ami(service_setup_data)
+    run_ssh_command(AmiBuilder.disk_cleanup_command)
     client = Helpers.create_aws_ec2_client
     name = "#{service_setup_data['deployment']['service_name']} #{Helpers.create_time_date_string}"
     resp = client.create_image(
       description: "#{service_setup_data['deployment']['service_name']} ",
       instance_id: get_aws_id,
-      name: name
+      name: name,
+      no_reboot: true
     )
     print "\r\nwaiting for the image to be ready"
     attempts = 0
