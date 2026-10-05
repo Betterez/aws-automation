@@ -34,7 +34,7 @@ class AmiBuilder
   end
 
   def self.disk_cleanup_command
-    'sudo rm -f /etc/cron.d/ami-builder-ttl /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/user-data.txt.i; sudo find /var/lib/cloud -name user-data.txt -delete 2>/dev/null; true'
+    'sudo rm -f /etc/cron.d/ami-builder-ttl /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/user-data.txt.i; sudo find /var/lib/cloud -name user-data.txt -delete 2>/dev/null; sync; true'
   end
 
   def self.with_ami_cleanup(instances_manager, notifire)
