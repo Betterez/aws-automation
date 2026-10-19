@@ -78,6 +78,30 @@ module ServiceSetupNormalizer
     out
   end
 
+  # Replace every git source branch when +branch+ is non-blank.
+  # A missing or blank value leaves the branch already resolved from service.yml
+  # (including the environment override) unchanged. Non-git sources are left alone.
+  def apply_branch_override!(service_setup, branch)
+    branch = branch.to_s.strip
+    return service_setup if branch.empty?
+
+    deployments = []
+    applications_list(service_setup).each do |app|
+      dep = app['deployment']
+      deployments << dep if dep.is_a?(Hash)
+    end
+    root = service_setup['deployment']
+    deployments << root if root.is_a?(Hash) && !deployments.include?(root)
+
+    deployments.each do |deployment|
+      source = deployment['source']
+      next unless source.is_a?(Hash) && source['type'] == 'git'
+
+      source['branch_name'] = branch
+    end
+    service_setup
+  end
+
   # Sync root deployment + machine from primary so ELBClient and legacy code
   # that read service_setup['deployment'] see the load-balanced app.
   def sync_root_deployment_and_machine!(service_setup)

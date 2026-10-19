@@ -11,4 +11,4 @@ Options:
       instances who are not load balancing instances will not be push regardless. default to `false`.
 * `--force_create` - create a server even if one exists. defaults to `false`
 * `--servers_count` - how many server to create, default to `1`.
-* `--branch` - the branch name in case of a git repo. default to `master`.
+* `--branch` - git branch to deploy. When non-empty, replaces `deployment.source.branch_name` (including the value selected by the environment `override` section) on every git source. When omitted or blank, the branch from `service.yml` is used.

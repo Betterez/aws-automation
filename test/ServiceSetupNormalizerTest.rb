@@ -2,6 +2,7 @@
 
 require 'test/unit'
 require_relative '../betterez/ServiceSetupNormalizer'
+require_relative '../utils/HashOverrider'
 
 class ServiceSetupNormalizerTest < Test::Unit::TestCase
   def legacy_setup
@@ -137,5 +138,72 @@ class ServiceSetupNormalizerTest < Test::Unit::TestCase
     assert_equal('ami-x', s['machine']['image'])
     assert_equal(2, s['machine']['servers_count'])
     assert_equal('npm', s['machine']['start'])
+  end
+
+  def test_branch_override_replaces_git_branch_from_service_file
+    setup = legacy_setup
+    ServiceSetupNormalizer.apply_branch_override!(setup, 'feature/ami')
+    assert_equal('feature/ami', setup['deployment']['source']['branch_name'])
+  end
+
+  def test_missing_branch_override_keeps_service_file_branch
+    setup = legacy_setup
+    ServiceSetupNormalizer.apply_branch_override!(setup, nil)
+    assert_equal('master', setup['deployment']['source']['branch_name'])
+  end
+
+  def test_empty_branch_override_keeps_service_file_branch
+    setup = legacy_setup
+    ServiceSetupNormalizer.apply_branch_override!(setup, '')
+    ServiceSetupNormalizer.apply_branch_override!(setup, '   ')
+    assert_equal('master', setup['deployment']['source']['branch_name'])
+  end
+
+  def test_branch_override_replaces_environment_branch_from_service_file
+    setup = legacy_setup
+    setup['override'] = {
+      'staging' => {
+        'deployment' => {
+          'source' => { 'branch_name' => 'staging' }
+        }
+      }
+    }
+    HashOverrider.new.override_hash!(setup, 'staging')
+    assert_equal('staging', setup['deployment']['source']['branch_name'])
+
+    ServiceSetupNormalizer.apply_branch_override!(setup, 'feature/ami')
+    assert_equal('feature/ami', setup['deployment']['source']['branch_name'])
+  end
+
+  def test_branch_override_updates_every_git_source_and_leaves_other_types
+    setup = {
+      'deployment' => {},
+      'machine' => {},
+      'applications' => [
+        {
+          'deployment' => {
+            'service_name' => 'java',
+            'source' => { 'type' => 'gcs_docker', 'bucket' => 'b', 'dir_name' => 'builds/' }
+          },
+          'machine' => {}
+        },
+        {
+          'deployment' => {
+            'service_name' => 'api',
+            'healthcheck' => { 'perform' => true },
+            'source' => { 'type' => 'git', 'repo' => 'git@github.com:Betterez/api.git', 'branch_name' => 'master' }
+          },
+          'machine' => {}
+        }
+      ]
+    }
+    ServiceSetupNormalizer.apply_branch_override!(setup, 'release/1')
+    ServiceSetupNormalizer.sync_root_deployment_and_machine!(setup)
+
+    java_source = setup['applications'][0]['deployment']['source']
+    assert_equal('gcs_docker', java_source['type'])
+    assert_nil(java_source['branch_name'])
+    assert_equal('release/1', setup['applications'][1]['deployment']['source']['branch_name'])
+    assert_equal('release/1', setup['deployment']['source']['branch_name'])
   end
 end
