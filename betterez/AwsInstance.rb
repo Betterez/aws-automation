@@ -9,6 +9,7 @@ require_relative 'OssecManager'
 require_relative 'Syslogger'
 require_relative 'InstancesManager'
 require_relative 'AmiBuilder'
+require_relative 'AmiJournalExporter'
 require_relative 'OnlineTagHandler'
 require 'rubygems'
 require 'pty'
@@ -121,6 +122,19 @@ class AwsInstance
 
   def notify(message)
     @notifire.notify(1, message) if !@notifire.nil? && @notifire
+  end
+
+  def export_ami_failure_journal(service_setup_data, error = nil)
+    AmiJournalExporter.export(self, service_setup_data, error)
+  end
+
+  def self.capture_ami_failure_journal(aws_instance, service_setup_data, error)
+    return unless service_setup_data[:ami]
+    return unless aws_instance.respond_to?(:export_ami_failure_journal)
+
+    aws_instance.export_ami_failure_journal(service_setup_data, error)
+  rescue StandardError => export_error
+    aws_instance.notify("failed to export ami journal: #{export_error.message}") if aws_instance.respond_to?(:notify)
   end
 
   # waits for an instance to reach a state.
@@ -490,7 +504,7 @@ class AwsInstance
     end
     run_pci_dss_check(service_setup_data, aws_setup_information)
     if service_setup_data[:ami]
-      AmiBuilder.with_ami_cleanup(instances_manager, notifire) do
+      AmiBuilder.with_ami_cleanup(instances_manager, notifire, service_setup_data) do
         launch_and_wait_for_instances(service_setup_data, aws_setup_information, notifire, instances_manager, instances_data)
         ready = instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
         raise 'no ready instance to create ami' if ready.nil? || ready.empty?
@@ -541,6 +555,14 @@ class AwsInstance
     instance_threads.each(&:kill) unless service_setup_data[:ami]
 
     if instances_manager.get_instances_with_status(InstancesManager::READY_STATUS).length < service_setup_data[:servers_count]
+      if service_setup_data[:ami]
+        AmiBuilder.export_failure_journals(
+          instances_manager,
+          service_setup_data,
+          notifire,
+          'created servers are below require number'
+        )
+      end
       if service_setup_data[:debug]
         notifire.notify 1, 'keeping failed servers, debug'
       else
@@ -841,6 +863,7 @@ class AwsInstance
         notifire.notify 1, 'keeping failed servers, debug'
       else
         notifire.notify(1, 'terminating instance due to failure')
+        capture_ami_failure_journal(aws_instance, service_setup_data, 'ssh connection failed')
         aws_instance.terminate_instance
       end
       return nil
@@ -900,6 +923,7 @@ class AwsInstance
           if service_setup_data[:debug]
             notifire.notify(1, 'keeping after failed.')
           else
+            capture_ami_failure_journal(aws_instance, service_setup_data, 'healthcheck failed')
             aws_instance.terminate_instance
           end
           return nil
@@ -930,6 +954,7 @@ class AwsInstance
         notifire.notify 1, 'not terminating after an error, debug mode'
       else
         notifire.notify 1, "error #{details}\r\nTerminating instance."
+        capture_ami_failure_journal(aws_instance, service_setup_data, details)
         aws_instance.terminate_instance
       end
       return nil
