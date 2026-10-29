@@ -3,6 +3,9 @@ require_relative 'InstancesManager'
 
 class AmiBuilder
   BUILDER_TTL_SECONDS = 10800
+  # Not a StandardError: rescues inside the build must not swallow TERM/INT.
+  class Interrupted < Exception
+  end
 
   def self.servers_to_launch(service_setup_data)
     return 1 if service_setup_data[:ami]
@@ -38,10 +41,13 @@ class AmiBuilder
   end
 
   def self.with_ami_cleanup(instances_manager, notifire, service_setup_data = nil)
-    previous_term = trap_cleanup_signal('TERM', instances_manager, service_setup_data)
-    previous_int = trap_cleanup_signal('INT', instances_manager, service_setup_data)
+    previous_term = trap_cleanup_signal('TERM')
+    previous_int = trap_cleanup_signal('INT')
     begin
       yield
+    rescue Interrupted => error
+      cleanup_on_signal(instances_manager, service_setup_data, error.message)
+      exit 1
     rescue StandardError => error
       export_failure_journals(instances_manager, service_setup_data, notifire, error)
       raise
@@ -91,11 +97,9 @@ class AmiBuilder
     notifire.notify(1, message) if notifire
   end
 
-  def self.trap_cleanup_signal(signal_name, instances_manager, service_setup_data = nil)
-    Signal.trap(signal_name) do
-      cleanup_on_signal(instances_manager, service_setup_data, signal_name)
-      exit 1
-    end
+  def self.trap_cleanup_signal(signal_name)
+    # Mutex#synchronize and exit raise ThreadError in a trap. The rescue runs them.
+    Signal.trap(signal_name) { raise Interrupted, signal_name }
   end
 
   def self.restore_signal(signal_name, previous_handler)

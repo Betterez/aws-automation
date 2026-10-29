@@ -1,5 +1,6 @@
 require 'test/unit'
 require 'base64'
+require 'tmpdir'
 require_relative '../betterez/AmiBuilder'
 require_relative '../betterez/InstancesManager'
 
@@ -43,6 +44,23 @@ class JournalAmiBuilderMock < AmiBuilderMock
   def terminate_instance
     @events << [:terminate]
     super
+  end
+end
+
+class TrapJournalBaker < JournalAmiBuilderMock
+  def initialize(record_path)
+    super()
+    @record_path = record_path
+  end
+
+  def export_ami_failure_journal(service_setup_data, error)
+    super
+    File.write(@record_path, events.inspect)
+  end
+
+  def terminate_instance
+    super
+    File.write(@record_path, events.inspect)
   end
 end
 
@@ -224,5 +242,26 @@ class AmiBuilderTest < Test::Unit::TestCase
     assert_equal(:terminate, baker.events[1][0])
     assert_equal('terminated', baker.status)
     assert_equal(0, manager.get_all_instances_number)
+  end
+
+  def test_term_trap_exports_journal_outside_trap_and_exits
+    record = File.join(Dir.tmpdir, "ami-builder-trap-#{Process.pid}-#{rand(1_000_000)}")
+    pid = fork do
+      manager = InstancesManager.new
+      baker = TrapJournalBaker.new(record)
+      manager.add_instance(baker)
+      AmiBuilder.with_ami_cleanup(manager, nil, { ami: true }) do
+        Process.kill('TERM', Process.pid)
+        sleep 2
+      end
+      File.write(record, 'returned')
+    end
+    _, status = Process.wait2(pid)
+    body = File.file?(record) ? File.read(record) : ''
+    assert_equal(1, status.exitstatus, body)
+    assert_match(/\[:export, \{:ami=>true\}, "signal TERM"\]/, body)
+    assert_match(/\[:terminate\]/, body)
+  ensure
+    File.delete(record) if defined?(record) && record && File.file?(record)
   end
 end
