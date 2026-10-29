@@ -6,7 +6,6 @@ require_relative 'JournalSanitizer'
 class AmiJournalExporter
   BUCKET = 'btrz-ami-builder-journals'
   REGION = 'us-east-1'
-  JOURNAL_COMMAND = 'sudo journalctl -b --no-pager -o short-iso'
   SSH_ATTEMPTS = 2
 
   @mutex = Mutex.new
@@ -81,8 +80,13 @@ class AmiJournalExporter
     ].join('/')
   end
 
+  def self.journal_command(service_setup_data)
+    unit = "#{path_segment(service_name(service_setup_data))}.service"
+    "sudo journalctl -b -u #{unit} --no-pager -o short-iso"
+  end
+
   def self.journal_body(instance, service_setup_data, error)
-    journal = instance.run_ssh_command(JOURNAL_COMMAND, SSH_ATTEMPTS, 2).to_s
+    journal = instance.run_ssh_command(journal_command(service_setup_data), SSH_ATTEMPTS, 2).to_s
     journal = 'journalctl returned no output' if journal.strip.empty?
     header = [
       "instance_id: #{instance.get_aws_id}",
@@ -91,7 +95,9 @@ class AmiJournalExporter
       "build_number: #{service_setup_data[:build_number]}",
       "error: #{error}"
     ].join("\n")
-    JournalSanitizer.sanitize("#{header}\n\n#{journal}\n")
+    body = JournalSanitizer.sanitize("#{header}\n\n#{journal}\n")
+    instance.notify(body) if instance.respond_to?(:notify)
+    body
   end
 
   def self.service_name(service_setup_data)
@@ -109,6 +115,6 @@ class AmiJournalExporter
     instance.notify(message) if instance.respond_to?(:notify)
   end
 
-  private_class_method :upload, :ensure_private_bucket, :object_key, :journal_body,
-                       :service_name, :path_segment, :notify_failure
+  private_class_method :upload, :ensure_private_bucket, :object_key, :journal_command,
+                       :journal_body, :service_name, :path_segment, :notify_failure
 end

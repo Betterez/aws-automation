@@ -100,7 +100,9 @@ class AmiJournalExporterTest < Test::Unit::TestCase
     assert_match(/build_number: 84/, params[:body])
     assert_match(/error: healthcheck failed mongodb:\/\/\[REDACTED\]@mongo\.internal\/gps/, params[:body])
     assert_match(%r{mongodb://\[REDACTED\]@mongo\.internal:27017/gps}, params[:body])
-    assert_equal('sudo journalctl -b --no-pager -o short-iso', instance.ssh_calls.first[:command])
+    assert_equal('sudo journalctl -b -u btrz-api-gps.service --no-pager -o short-iso', instance.ssh_calls.first[:command])
+    assert_equal(params[:body], instance.notifications.first)
+    assert_no_match(/s3cret/, instance.notifications.first)
     assert_equal(2, instance.ssh_calls.first[:loops])
     assert_empty(client.created_buckets)
   end
