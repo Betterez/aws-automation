@@ -63,6 +63,12 @@ class InstancesManager
     }
   end
 
+  def all_instances
+    @mutex.synchronize do
+      @instances.values.map { |entry| entry[:instance] }
+    end
+  end
+
   def get_all_instances_number
     result=0
     @mutex.synchronize{

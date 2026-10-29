@@ -28,6 +28,24 @@ class AmiBuilderMock
   end
 end
 
+class JournalAmiBuilderMock < AmiBuilderMock
+  attr_reader :events
+
+  def initialize
+    super
+    @events = []
+  end
+
+  def export_ami_failure_journal(service_setup_data, error)
+    @events << [:export, service_setup_data, error]
+  end
+
+  def terminate_instance
+    @events << [:terminate]
+    super
+  end
+end
+
 class AmiBuilderTest < Test::Unit::TestCase
   def test_ami_mode_launches_one_server_even_when_servers_count_is_two
     assert_equal(1, AmiBuilder.servers_to_launch(ami: true, servers_count: 2))
@@ -159,5 +177,52 @@ class AmiBuilderTest < Test::Unit::TestCase
   def test_disk_cleanup_flushes_filesystem_after_removing_files
     command = AmiBuilder.disk_cleanup_command
     assert_match(/;\s*sync\s*;\s*true\z/, command)
+  end
+
+  def test_ami_failure_exports_journal_before_terminate
+    manager = InstancesManager.new
+    baker = JournalAmiBuilderMock.new
+    baker.fail_create_ami = true
+    manager.add_instance(baker)
+    manager.update_instance_status(baker, InstancesManager::READY_STATUS)
+    setup = { ami: true, environment: 'sandbox', build_number: '84' }
+
+    error = assert_raise(RuntimeError) do
+      AmiBuilder.build_ami_and_terminate_builders(manager, setup, nil)
+    end
+
+    assert_equal('ami creation failed', error.message)
+    assert_equal(:export, baker.events[0][0])
+    assert_equal(setup, baker.events[0][1])
+    assert_equal('ami creation failed', baker.events[0][2].message)
+    assert_equal(:terminate, baker.events[1][0])
+    assert_equal('terminated', baker.status)
+  end
+
+  def test_ami_success_does_not_export_journal
+    manager = InstancesManager.new
+    baker = JournalAmiBuilderMock.new
+    manager.add_instance(baker)
+    manager.update_instance_status(baker, InstancesManager::READY_STATUS)
+
+    AmiBuilder.build_ami_and_terminate_builders(manager, { ami: true }, nil)
+
+    assert_equal([[:terminate]], baker.events)
+    assert_equal('terminated', baker.status)
+  end
+
+  def test_signal_cleanup_exports_journal_before_terminate
+    manager = InstancesManager.new
+    baker = JournalAmiBuilderMock.new
+    manager.add_instance(baker)
+    setup = { ami: true }
+
+    AmiBuilder.cleanup_on_signal(manager, setup, 'TERM')
+
+    assert_equal(:export, baker.events[0][0])
+    assert_equal('signal TERM', baker.events[0][2])
+    assert_equal(:terminate, baker.events[1][0])
+    assert_equal('terminated', baker.status)
+    assert_equal(0, manager.get_all_instances_number)
   end
 end

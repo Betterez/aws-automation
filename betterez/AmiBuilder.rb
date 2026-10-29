@@ -37,11 +37,14 @@ class AmiBuilder
     'sudo rm -f /etc/cron.d/ami-builder-ttl /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/user-data.txt.i; sudo find /var/lib/cloud -name user-data.txt -delete 2>/dev/null; sync; true'
   end
 
-  def self.with_ami_cleanup(instances_manager, notifire)
-    previous_term = trap_cleanup_signal('TERM', instances_manager)
-    previous_int = trap_cleanup_signal('INT', instances_manager)
+  def self.with_ami_cleanup(instances_manager, notifire, service_setup_data = nil)
+    previous_term = trap_cleanup_signal('TERM', instances_manager, service_setup_data)
+    previous_int = trap_cleanup_signal('INT', instances_manager, service_setup_data)
     begin
       yield
+    rescue StandardError => error
+      export_failure_journals(instances_manager, service_setup_data, notifire, error)
+      raise
     ensure
       restore_signal('TERM', previous_term)
       restore_signal('INT', previous_int)
@@ -51,13 +54,30 @@ class AmiBuilder
   end
 
   def self.build_ami_and_terminate_builders(instances_manager, service_setup_data, notifire)
-    with_ami_cleanup(instances_manager, notifire) do
+    with_ami_cleanup(instances_manager, notifire, service_setup_data) do
       ready = instances_manager.get_instances_with_status(InstancesManager::READY_STATUS)
       raise 'no ready instance to create ami' if ready.nil? || ready.empty?
 
       notify(notifire, 'creating ami.')
       ready[0].create_ami(service_setup_data)
     end
+  end
+
+  def self.export_failure_journals(instances_manager, service_setup_data, notifire, error)
+    return if service_setup_data.nil?
+
+    instances_manager.all_instances.each do |instance|
+      next unless instance.respond_to?(:export_ami_failure_journal)
+
+      instance.export_ami_failure_journal(service_setup_data, error)
+    end
+  rescue StandardError => export_error
+    notify(notifire, "failed to export ami journal: #{export_error.message}")
+  end
+
+  def self.cleanup_on_signal(instances_manager, service_setup_data, signal_name)
+    export_failure_journals(instances_manager, service_setup_data, nil, "signal #{signal_name}")
+    instances_manager.delete_and_terminate_all_instances
   end
 
   def self.builder_ttl_user_data
@@ -71,9 +91,9 @@ class AmiBuilder
     notifire.notify(1, message) if notifire
   end
 
-  def self.trap_cleanup_signal(signal_name, instances_manager)
+  def self.trap_cleanup_signal(signal_name, instances_manager, service_setup_data = nil)
     Signal.trap(signal_name) do
-      instances_manager.delete_and_terminate_all_instances
+      cleanup_on_signal(instances_manager, service_setup_data, signal_name)
       exit 1
     end
   end
