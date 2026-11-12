@@ -354,6 +354,15 @@ class AwsInstance
         channel.on_request('exit-status') do |_ch, data|
           exit_status = data.read_long
         end
+        channel.on_eof do |_ch |
+          puts 'Error: EOF received'
+        end
+        channel.on_close do |_ch|
+          puts 'Error: Channel closed'
+        end
+        channel.on_request('exit-signal') do |_ch, data|
+          puts "Error: #{data.read_str}"
+        end
       end
       signal.wait
     end
