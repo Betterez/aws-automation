@@ -54,13 +54,24 @@ class AwsInstanceSshTest < Test::Unit::TestCase
     end
   end
 
+  class FakeSignal
+    def initialize(name)
+      @name = name
+    end
+
+    def read_string
+      @name
+    end
+  end
+
   class FakeChannel
     attr_reader :executed, :eof_sent, :shell_requested
 
-    def initialize(stdout:, stderr:, exit_code:)
+    def initialize(stdout:, stderr:, exit_code:, exit_signal: nil)
       @stdout = stdout
       @stderr = stderr
       @exit_code = exit_code
+      @exit_signal = exit_signal
       @request_handlers = {}
     end
 
@@ -93,10 +104,21 @@ class AwsInstanceSshTest < Test::Unit::TestCase
       @request_handlers[name] = block
     end
 
+    def on_eof(&block)
+      @on_eof = block
+    end
+
+    def on_close(&block)
+      @on_close = block
+    end
+
     def wait
       @on_data&.call(self, @stdout) if @stdout
       @on_extended_data&.call(self, 1, @stderr) if @stderr
+      @request_handlers['exit-signal']&.call(self, FakeSignal.new(@exit_signal)) if @exit_signal
       @request_handlers['exit-status']&.call(self, FakeExitStatus.new(@exit_code)) unless @exit_code.nil?
+      @on_eof&.call(self)
+      @on_close&.call(self)
     end
   end
 
@@ -111,8 +133,8 @@ class AwsInstanceSshTest < Test::Unit::TestCase
     end
   end
 
-  def stub_ssh_channel(stdout: 'out', stderr: nil, exit_code: 0)
-    channel = FakeChannel.new(stdout: stdout, stderr: stderr, exit_code: exit_code)
+  def stub_ssh_channel(stdout: 'out', stderr: nil, exit_code: 0, exit_signal: nil)
+    channel = FakeChannel.new(stdout: stdout, stderr: stderr, exit_code: exit_code, exit_signal: exit_signal)
     Net::SSH.define_singleton_method(:start) do |*_args, **_opts, &block|
       block.call(FakeChannelSession.new(channel))
     end
@@ -218,6 +240,18 @@ class AwsInstanceSshTest < Test::Unit::TestCase
 
     error = assert_raise(RuntimeError) { capture_stdout { @instance.run_ssh_in_terminal('pnpm i') } }
     assert_match(/without exit status/, error.message)
+  end
+
+  def test_run_ssh_in_terminal_prints_exit_signal
+    stub_ssh_channel(exit_code: nil, exit_signal: 'TERM')
+    original = $stdout
+    captured = StringIO.new
+    $stdout = captured
+    error = assert_raise(RuntimeError) { @instance.run_ssh_in_terminal('pnpm i') }
+    assert_match(/Error: TERM/, captured.string)
+    assert_match(/without exit status/, error.message)
+  ensure
+    $stdout = original
   end
 
   def test_run_queued_ssh_command_retries_failed_terminal_command_until_success

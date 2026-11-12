@@ -361,7 +361,7 @@ class AwsInstance
           puts 'Error: Channel closed'
         end
         channel.on_request('exit-signal') do |_ch, data|
-          puts "Error: #{data.read_str}"
+          puts "Error: #{data.read_string}"
         end
       end
       signal.wait
