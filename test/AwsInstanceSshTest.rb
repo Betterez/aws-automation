@@ -284,8 +284,23 @@ class AwsInstanceSshTest < Test::Unit::TestCase
     assert_equal('', result)
     assert_match(/Started background job with PID: 4321/, output)
     assert_match(/SUCCESS: npm install completed!/, output)
-    assert_equal(['nohup npm install > /tmp/script.log 2>&1 & echo $!'], start.commands)
+    assert_equal(["nohup bash -c 'npm install' > /tmp/script.log 2>&1 & echo $!"], start.commands)
     assert_equal(['tail -n 20 /tmp/script.log', "kill -0 4321 2>/dev/null && echo 'RUNNING' || echo 'FINISHED'"], poll.commands)
+  end
+
+  def test_run_ssh_command_with_status_runs_shell_builtins_and_keeps_the_pid
+    skip_sleep
+    start = StatusSession.new("2423\nnohup: failed to run command 'cd'\n")
+    poll = StatusSession.new("ok\n", "FINISHED\n")
+    stub_ssh([start, poll])
+
+    capture_stdout { @instance.run_ssh_command_with_status("cd /home/bz-app/api && bash -c 'pnpm i'") }
+
+    assert_equal(
+      [%q(nohup bash -c 'cd /home/bz-app/api && bash -c '\''pnpm i'\''' > /tmp/script.log 2>&1 & echo $!)],
+      start.commands
+    )
+    assert_equal("kill -0 2423 2>/dev/null && echo 'RUNNING' || echo 'FINISHED'", poll.commands.last)
   end
 
   def test_run_ssh_command_with_status_keeps_polling_while_running
