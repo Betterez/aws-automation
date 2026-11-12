@@ -3,6 +3,7 @@ require_relative 'betterez/ServerCreator'
 require_relative 'betterez/Notifire'
 require_relative 'betterez/Helpers'
 require_relative 'betterez/ServiceSetupNormalizer'
+require_relative 'betterez/GithubReleaseInstaller'
 require_relative 'utils/HashOverrider'
 require('open3')
 require 'optparse'
@@ -63,12 +64,19 @@ OptionParser.new do |opts|
     opts.on('--use_secrets_manager', "indicates if the aws secrets manager is used") do |_argument|
       service_settings[:use_secrets_manager] = true
     end
+    opts.on('--github_release TAG', 'install git apps from a GitHub release tag asset instead of cloning') do |argument|
+      service_settings[:github_release] = argument
+    end
 end.parse!
 
 # check the settings
 raise OptionParser::MissingArgument if service_settings[:environment].nil? || service_settings[:environment] == ''
 raise OptionParser::MissingArgument if service_settings[:build_number].nil? || service_settings[:build_number] == ''
 raise OptionParser::MissingArgument if service_settings[:service_file].nil? || service_settings[:service_file] == ''
+if service_settings[:github_release] && service_settings[:github_release].to_s != ''
+  GithubReleaseInstaller.validate_tag!(service_settings[:github_release])
+  GithubReleaseInstaller.token_from_env!
+end
 machine=nil
 overrider=HashOverrider.new
 service_settings[:servers_count]=1 if service_settings[:debug]
@@ -81,7 +89,10 @@ rescue => err
   puts err
 end
 exit 1 if machine==nil
+# Keep CLI-only keys after merge; YAML must not wipe github_release.
+github_release = service_settings[:github_release]
 service_settings.merge!(machine)
+service_settings[:github_release] = github_release if github_release && github_release.to_s != ''
 ServiceSetupNormalizer.sync_root_deployment_and_machine!(service_settings) if ServiceSetupNormalizer.multi_app?(service_settings)
 if service_settings[:servers_count].nil? || service_settings[:servers_count] == 0
   if service_settings['machine'] && service_settings['machine']['servers_count']

@@ -5,6 +5,7 @@ require_relative 'Transaction'
 require_relative 'ServiceInstaller'
 require_relative 'ServiceSetupNormalizer'
 require_relative 'GoogleCloudStorage'
+require_relative 'GithubReleaseInstaller'
 require_relative 'OssecManager'
 require_relative 'Syslogger'
 require_relative 'InstancesManager'
@@ -665,37 +666,48 @@ class AwsInstance
       notify "GCS: Docker image tar ready at #{app_dir}/#{remote_basename}"
 
     when 'git'
-      branch_name = deployment['source']['branch_name']
       git_repo = deployment['source']['repo']
-      notify "git (#{service_name}): loading from #{git_repo} on branch #{branch_name} .."
-      if existing_servers
-        ssh_command = " if [ -d '/home/bz-app/#{service_name}/.git' ]; then echo 'repository ok'; else echo 'not exists'; fi"
-        results = run_ssh_command ssh_command
-        puts "repository location #{results}"
-        throw 'bad location' if results == 'not exists'
-        ssh_command = "cd /home/bz-app/#{service_name} " \
-                      "&& sudo -H -u bz-app bash -c 'git stash'" \
-                      "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'" \
-                      " && sudo -H -u bz-app bash -c 'git pull origin #{branch_name}'"
+      github_release = root_service_setup[:github_release]
+      if github_release && github_release.to_s != ''
+        GithubReleaseInstaller.install_on_instance(
+          self,
+          service_name: service_name,
+          git_repo: git_repo,
+          tag: github_release,
+          build_number: root_service_setup[:build_number]
+        )
       else
-        ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo} #{service_name}'"
-        run_ssh_command ssh_command
-        unless branch_name == 'master'
-          notify "switching #{service_name} to #{branch_name}"
+        branch_name = deployment['source']['branch_name']
+        notify "git (#{service_name}): loading from #{git_repo} on branch #{branch_name} .."
+        if existing_servers
+          ssh_command = " if [ -d '/home/bz-app/#{service_name}/.git' ]; then echo 'repository ok'; else echo 'not exists'; fi"
+          results = run_ssh_command ssh_command
+          puts "repository location #{results}"
+          throw 'bad location' if results == 'not exists'
+          ssh_command = "cd /home/bz-app/#{service_name} " \
+                        "&& sudo -H -u bz-app bash -c 'git stash'" \
+                        "&& sudo -H -u bz-app bash -c 'git checkout #{branch_name}'" \
+                        " && sudo -H -u bz-app bash -c 'git pull origin #{branch_name}'"
+        else
+          ssh_command = "cd /home/bz-app && sudo -H -u bz-app bash -c 'git clone #{git_repo} #{service_name}'"
+          run_ssh_command ssh_command
+          unless branch_name == 'master'
+            notify "switching #{service_name} to #{branch_name}"
+            ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
+            run_ssh_command ssh_command
+          end
+        end
+        if existing_servers
+          notify "updating existing servers code base (#{ssh_command})"
+          notify run_ssh_command ssh_command
+        end
+        notify 'done'
+        unless existing_servers
           ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
           run_ssh_command ssh_command
         end
+        write_build_number_file(root_service_setup[:build_number])
       end
-      if existing_servers
-        notify "updating existing servers code base (#{ssh_command})"
-        notify run_ssh_command ssh_command
-      end
-      notify 'done'
-      unless existing_servers
-        ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c 'git checkout #{branch_name}'"
-        run_ssh_command ssh_command
-      end
-      write_build_number_file(root_service_setup[:build_number])
     when 's3'
       notify "loading #{service_name} from s3"
       filename = deployment['source']['bucket']
@@ -733,7 +745,11 @@ class AwsInstance
     else
       throw "unknown deployment.source.type for #{service_name}: #{deployment['source'].inspect}"
     end
-    if !machine['install'].nil? && !machine['install'].empty?
+    github_release = root_service_setup[:github_release]
+    skip_install = github_release && github_release.to_s != '' && deployment.dig('source', 'type') == 'git'
+    if skip_install
+      notify "skipping install for #{service_name} (github release asset is prebuilt)"
+    elsif !machine['install'].nil? && !machine['install'].empty?
       notify "installing #{service_name}...."
       machine['install'].each do |command|
         next if command == ''
