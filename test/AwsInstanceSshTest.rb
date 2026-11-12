@@ -44,6 +44,20 @@ class AwsInstanceSshTest < Test::Unit::TestCase
     end
   end
 
+  class StatusSession
+    attr_reader :commands
+
+    def initialize(*replies)
+      @replies = replies
+      @commands = []
+    end
+
+    def exec!(command, **)
+      @commands << command
+      @replies.shift
+    end
+  end
+
   class FakeExitStatus
     def initialize(code)
       @code = code
@@ -252,6 +266,68 @@ class AwsInstanceSshTest < Test::Unit::TestCase
     assert_match(/without exit status/, error.message)
   ensure
     $stdout = original
+  end
+
+  def skip_sleep
+    @instance.define_singleton_method(:sleep) { |*| }
+  end
+
+  def test_run_ssh_command_with_status_returns_when_background_job_finishes
+    skip_sleep
+    start = StatusSession.new("4321\n")
+    poll = StatusSession.new("added 10 packages\n", "FINISHED\n")
+    stub_ssh([start, poll])
+
+    result = nil
+    output = capture_stdout { result = @instance.run_ssh_command_with_status('npm install') }
+
+    assert_equal('', result)
+    assert_match(/Started background job with PID: 4321/, output)
+    assert_match(/SUCCESS: npm install completed!/, output)
+    assert_equal(['nohup npm install > /tmp/script.log 2>&1 & echo $!'], start.commands)
+    assert_equal(['tail -n 20 /tmp/script.log', "kill -0 4321 2>/dev/null && echo 'RUNNING' || echo 'FINISHED'"], poll.commands)
+  end
+
+  def test_run_ssh_command_with_status_keeps_polling_while_running
+    slept = []
+    @instance.define_singleton_method(:sleep) { |seconds| slept << seconds }
+    running = StatusSession.new("npm ERR! still installing\n", "RUNNING\n")
+    finished = StatusSession.new("added 10 packages\n", "FINISHED\n")
+    stub_ssh([StatusSession.new('99'), running, finished])
+
+    capture_stdout { @instance.run_ssh_command_with_status('npm install') }
+
+    assert_equal([10, 10], slept)
+    assert_equal("kill -0 99 2>/dev/null && echo 'RUNNING' || echo 'FINISHED'", running.commands.last)
+  end
+
+  def test_run_ssh_command_with_status_raises_when_log_shows_npm_failure
+    skip_sleep
+    ['npm ERR! code E404', 'npm error code E404', 'bash: npm: command not found'].each do |log|
+      stub_ssh([StatusSession.new("7\n"), StatusSession.new(log, "FINISHED\n")])
+
+      error = assert_raise(RuntimeError) do
+        capture_stdout { @instance.run_ssh_command_with_status('npm install') }
+      end
+      assert_equal('npm install failed!', error.message)
+    end
+  end
+
+  def test_run_ssh_command_with_status_raises_after_ninety_polls
+    skip_sleep
+    polls = 0
+    Net::SSH.define_singleton_method(:start) do |*_args, **_opts, &block|
+      replies = polls.zero? ? ["55\n"] : ['still going', "RUNNING\n"]
+      polls += 1
+      block.call(StatusSession.new(*replies))
+    end
+
+    error = assert_raise(RuntimeError) do
+      capture_stdout { @instance.run_ssh_command_with_status('npm install') }
+    end
+
+    assert_equal('Command timed out after 15 minutes', error.message)
+    assert_equal(91, polls)
   end
 
   def test_run_queued_ssh_command_retries_failed_terminal_command_until_success

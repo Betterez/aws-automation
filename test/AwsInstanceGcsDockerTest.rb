@@ -65,6 +65,11 @@ class AwsInstanceGcsDockerTest < Test::Unit::TestCase
     def run_queued_ssh_command(command, _run_in_terminal)
       @commands << command
     end
+
+    def run_ssh_command_with_status(command)
+      @commands << command
+      ''
+    end
   end
 
   def setup

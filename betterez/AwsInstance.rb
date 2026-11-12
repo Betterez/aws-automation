@@ -25,8 +25,7 @@ class AwsInstance
   QUEUED_COMMAND_POLL_SECONDS = 5
   QUEUED_COMMAND_MAX_POLLS = 360
   QUEUED_COMMAND_MAX_ATTEMPTS = 5
-  # Must stay below QUEUED_COMMAND_POLL_SECONDS * QUEUED_COMMAND_MAX_POLLS so the remote process
-  # is killed on the host before the local thread gives up and retries.
+  # Ends a hung install on the host. The local poll does not close the SSH channel.
   INSTALL_REMOTE_TIMEOUT_SECONDS = 1740
   # setting hash
   attr_accessor(:aws_setup_information)
@@ -742,7 +741,8 @@ class AwsInstance
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && " \
                       "sudo -H -u bz-app timeout -k 30 #{INSTALL_REMOTE_TIMEOUT_SECONDS} bash -c '#{command}'"
-        run_queued_ssh_command(ssh_command, true)
+        #run_queued_ssh_command(ssh_command, true)
+        run_ssh_command_with_status(ssh_command)
       end
     elsif !machine['fast_install'].nil? && !machine['fast_install'].empty?
       notify "fast installing #{service_name}...."
@@ -757,6 +757,43 @@ class AwsInstance
       notify "nothing to install for #{service_name}..."
     end
     notify "service code loaded for #{service_name}."
+  end
+
+  def run_ssh_command_with_status(command)
+    result = ''
+    pid = nil
+    Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
+      output = ssh.exec!("nohup #{command} > /tmp/script.log 2>&1 & echo $!")
+      pid = output.strip
+      puts "Started background job with PID: #{pid}"
+    end
+    counter = 0
+    loop do
+      counter += 1
+      if counter > 90
+        puts "Command timed out after 15 minutes"
+        raise "Command timed out after 15 minutes"
+      end
+      sleep 10
+      Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath], timeout: @ssh_timeout_period) do |ssh|
+        # 1. Read the last 20 lines of the log file
+        log_output = ssh.exec!("tail -n 20 /tmp/script.log")
+        puts "--- Latest Logs ---"
+        puts log_output
+        # 2. Check if the process is still running (kill -0 checks existence without stopping it)
+        status = ssh.exec!("kill -0 #{pid} 2>/dev/null && echo 'RUNNING' || echo 'FINISHED'").strip
+        puts "Job Status: #{status}"
+        # 3. Detect if npm failed inside /tmp/script.log once finished
+        next unless status == 'FINISHED'
+
+        if log_output.match?(/npm (error|ERR!)|command not found/i)
+          puts "ERROR: npm install failed!"
+          raise "npm install failed!"
+        end
+        puts "SUCCESS: npm install completed!"
+        return result
+      end
+    end
   end
 
   def run_queued_ssh_command(command, run_in_terminal,
