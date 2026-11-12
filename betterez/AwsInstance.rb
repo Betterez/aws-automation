@@ -741,8 +741,8 @@ class AwsInstance
         notify "running #{command}"
         ssh_command = "cd /home/bz-app/#{service_name} && " \
                       "sudo -H -u bz-app timeout -k 30 #{INSTALL_REMOTE_TIMEOUT_SECONDS} bash -c '#{command}'"
-        #run_queued_ssh_command(ssh_command, true)
-        run_ssh_command_with_status(ssh_command)
+        run_queued_ssh_command(ssh_command, true)
+        #run_ssh_command_with_status(ssh_command)
       end
     elsif !machine['fast_install'].nil? && !machine['fast_install'].empty?
       notify "fast installing #{service_name}...."
