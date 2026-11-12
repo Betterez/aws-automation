@@ -118,6 +118,15 @@ class AwsInstanceGcsDockerTest < Test::Unit::TestCase
     assert(@instance.commands.none? { |c| c.include?('tar -xzf') })
   end
 
+  def test_install_commands_run_under_remote_timeout
+    @instance.load_single_application_code({ build_number: 42 }, app_entry, false, @temp_dir)
+
+    assert_includes(
+      @instance.commands,
+      "cd /home/bz-app/btrz-api-bpes-java && sudo -H -u bz-app timeout -k 30 1740 bash -c 'docker load -i image.tar'"
+    )
+  end
+
   def test_git_source_writes_build_number_file_once
     @instance.load_single_application_code(
       { build_number: 57 },

@@ -22,6 +22,12 @@ class AwsInstance
   @@time_to_wait = 15
   MAX_THREAD_WAITING = 80
   MAX_AMI_WAIT_ATTEMPTS = 360
+  QUEUED_COMMAND_POLL_SECONDS = 5
+  QUEUED_COMMAND_MAX_POLLS = 360
+  QUEUED_COMMAND_MAX_ATTEMPTS = 5
+  # Must stay below QUEUED_COMMAND_POLL_SECONDS * QUEUED_COMMAND_MAX_POLLS so the remote process
+  # is killed on the host before the local thread gives up and retries.
+  INSTALL_REMOTE_TIMEOUT_SECONDS = 1740
   # setting hash
   attr_accessor(:aws_setup_information)
   attr_accessor(:notifire)
@@ -326,29 +332,33 @@ class AwsInstance
     raise "ssh command failed after #{loops} attempts: #{ssh_command} (#{last_error})"
   end
 
-  ## runs ssh command and streams the output to stdout
+  ## runs ssh command, streams stdout and stderr to stdout, and raises unless it exits with status 0
   def run_ssh_in_terminal(command)
     puts "running #{command} in terminal"
+    exit_status = nil
     Net::SSH.start(get_access_ip, 'ubuntu', keys: @aws_setup_information[@environment.to_sym][:keyPath]) do |ssh|
       signal = ssh.open_channel do |channel|
-        channel.send_channel_request 'shell' do |_ch, success|
-          if success
-            puts 'user shell started successfully'
-          else
-            puts 'could not start user shell'
-          end
+        channel.exec(command) do |ch, success|
+          raise "could not execute #{command}" unless success
+
+          ch.eof!
         end
-        channel.on_data do |_term, data|
-          STDOUT.sync = true
+        channel.on_data do |_ch, data|
+          $stdout.sync = true
           puts data
         end
-        channel.request_pty do |channel, _data|
-          channel.send_data("#{command}\n")
-          channel.send_data("exit\n")
+        channel.on_extended_data do |_ch, _type, data|
+          $stdout.sync = true
+          puts data
+        end
+        channel.on_request('exit-status') do |_ch, data|
+          exit_status = data.read_long
         end
       end
       signal.wait
     end
+    raise "command finished without exit status: #{command}" if exit_status.nil?
+    raise "command exited with status #{exit_status}: #{command}" unless exit_status.zero?
   end
 
   ## update_logger_config
@@ -721,7 +731,8 @@ class AwsInstance
         next if command == ''
 
         notify "running #{command}"
-        ssh_command = "cd /home/bz-app/#{service_name} && sudo -H -u bz-app bash -c '#{command}'"
+        ssh_command = "cd /home/bz-app/#{service_name} && " \
+                      "sudo -H -u bz-app timeout -k 30 #{INSTALL_REMOTE_TIMEOUT_SECONDS} bash -c '#{command}'"
         run_queued_ssh_command(ssh_command, true)
       end
     elsif !machine['fast_install'].nil? && !machine['fast_install'].empty?
@@ -739,31 +750,34 @@ class AwsInstance
     notify "service code loaded for #{service_name}."
   end
 
-  def run_queued_ssh_command(command, run_in_terminal)
+  def run_queued_ssh_command(command, run_in_terminal,
+                             poll_seconds = QUEUED_COMMAND_POLL_SECONDS, max_polls = QUEUED_COMMAND_MAX_POLLS)
     puts "executing queued command: #{command},#{run_in_terminal}"
-    failed_command_executions = 0
-    command_done_executing = false
-    sleep_counter = 0
-    until command_done_executing
-      sleep_counter = 0
+    QUEUED_COMMAND_MAX_ATTEMPTS.times do |attempt|
+      outcome = nil
       command_thread = Thread.new do
-        run_ssh_in_terminal(command) if run_in_terminal
-        run_ssh_command(command) unless run_in_terminal
-        command_done_executing = true
+        Thread.current.report_on_exception = false
+        run_in_terminal ? run_ssh_in_terminal(command) : run_ssh_command(command)
+        outcome = :done
+      rescue StandardError => e
+        outcome = e
       end
-      until command_done_executing
-        sleep 5
+      sleep_counter = 0
+      while outcome.nil?
+        sleep poll_seconds
         sleep_counter += 1
-        puts "clock #{sleep_counter} out of 360\r\n"
-        if sleep_counter > 360 # 30 minutes max
-          Thread.kill(command_thread)
-          puts "COMMAND KILLED: #{command}"
-          break
-        end
+        puts "clock #{sleep_counter} out of #{max_polls}\r\n"
+        next unless sleep_counter >= max_polls && outcome.nil?
+
+        Thread.kill(command_thread)
+        outcome = :killed
+        puts "COMMAND KILLED: #{command}"
       end
-      failed_command_executions += 1
-      throw "command #{command} failed to execute" if failed_command_executions > 4
+      return if outcome == :done
+
+      puts "attempt #{attempt + 1} of #{QUEUED_COMMAND_MAX_ATTEMPTS} failed: #{outcome}" unless outcome == :killed
     end
+    raise "command #{command} failed to execute after #{QUEUED_COMMAND_MAX_ATTEMPTS} attempts"
   end
 
   ## Creates a single service instance

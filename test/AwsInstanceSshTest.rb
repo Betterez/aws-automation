@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test/unit'
+require 'stringio'
 
 $LOADED_FEATURES << 'net/ssh' unless $LOADED_FEATURES.include?('net/ssh')
 $LOADED_FEATURES << 'net/scp' unless $LOADED_FEATURES.include?('net/scp')
@@ -41,6 +42,90 @@ class AwsInstanceSshTest < Test::Unit::TestCase
       status[:exit_code] = @exit_code if status
       @output
     end
+  end
+
+  class FakeExitStatus
+    def initialize(code)
+      @code = code
+    end
+
+    def read_long
+      @code
+    end
+  end
+
+  class FakeChannel
+    attr_reader :executed, :eof_sent, :shell_requested
+
+    def initialize(stdout:, stderr:, exit_code:)
+      @stdout = stdout
+      @stderr = stderr
+      @exit_code = exit_code
+      @request_handlers = {}
+    end
+
+    def exec(command)
+      @executed = command
+      yield(self, true) if block_given?
+    end
+
+    def send_channel_request(name, *)
+      @shell_requested = true if name == 'shell'
+    end
+
+    def request_pty(*); end
+
+    def send_data(*); end
+
+    def eof!
+      @eof_sent = true
+    end
+
+    def on_data(&block)
+      @on_data = block
+    end
+
+    def on_extended_data(&block)
+      @on_extended_data = block
+    end
+
+    def on_request(name, &block)
+      @request_handlers[name] = block
+    end
+
+    def wait
+      @on_data&.call(self, @stdout) if @stdout
+      @on_extended_data&.call(self, 1, @stderr) if @stderr
+      @request_handlers['exit-status']&.call(self, FakeExitStatus.new(@exit_code)) unless @exit_code.nil?
+    end
+  end
+
+  class FakeChannelSession
+    def initialize(channel)
+      @channel = channel
+    end
+
+    def open_channel
+      yield @channel
+      @channel
+    end
+  end
+
+  def stub_ssh_channel(stdout: 'out', stderr: nil, exit_code: 0)
+    channel = FakeChannel.new(stdout: stdout, stderr: stderr, exit_code: exit_code)
+    Net::SSH.define_singleton_method(:start) do |*_args, **_opts, &block|
+      block.call(FakeChannelSession.new(channel))
+    end
+    channel
+  end
+
+  def capture_stdout
+    original = $stdout
+    $stdout = StringIO.new
+    yield
+    $stdout.string
+  ensure
+    $stdout = original
   end
 
   def setup
@@ -100,6 +185,76 @@ class AwsInstanceSshTest < Test::Unit::TestCase
     stub_ssh([StandardError.new('refused'), FakeSession.new('ok', 0)])
 
     assert_equal('ok', @instance.run_ssh_command!('ls', 3, 0))
+  end
+
+  def test_run_ssh_in_terminal_execs_command_and_closes_stdin
+    channel = stub_ssh_channel
+
+    capture_stdout { @instance.run_ssh_in_terminal('cd /home/bz-app/svc && pnpm i') }
+
+    assert_equal('cd /home/bz-app/svc && pnpm i', channel.executed)
+    assert(channel.eof_sent)
+    assert_nil(channel.shell_requested)
+  end
+
+  def test_run_ssh_in_terminal_prints_stderr
+    stub_ssh_channel(stdout: 'Progress: resolved 10', stderr: 'ERR_PNPM_FETCH_404 btrz-monitoring', exit_code: 0)
+
+    output = capture_stdout { @instance.run_ssh_in_terminal('pnpm i') }
+
+    assert_match(/Progress: resolved 10/, output)
+    assert_match(/ERR_PNPM_FETCH_404 btrz-monitoring/, output)
+  end
+
+  def test_run_ssh_in_terminal_raises_on_non_zero_exit
+    stub_ssh_channel(stderr: 'ERR_PNPM', exit_code: 1)
+
+    error = assert_raise(RuntimeError) { capture_stdout { @instance.run_ssh_in_terminal('pnpm i') } }
+    assert_match(/exited with status 1/, error.message)
+  end
+
+  def test_run_ssh_in_terminal_raises_without_exit_status
+    stub_ssh_channel(exit_code: nil)
+
+    error = assert_raise(RuntimeError) { capture_stdout { @instance.run_ssh_in_terminal('pnpm i') } }
+    assert_match(/without exit status/, error.message)
+  end
+
+  def test_run_queued_ssh_command_retries_failed_terminal_command_until_success
+    attempts = 0
+    @instance.define_singleton_method(:run_ssh_in_terminal) do |_command|
+      attempts += 1
+      raise 'command exited with status 1' if attempts == 1
+    end
+
+    capture_stdout { @instance.run_queued_ssh_command('pnpm i', true, 0.01, 10) }
+
+    assert_equal(2, attempts)
+  end
+
+  def test_run_queued_ssh_command_raises_after_five_failed_attempts
+    attempts = 0
+    @instance.define_singleton_method(:run_ssh_in_terminal) do |_command|
+      attempts += 1
+      raise 'command exited with status 1'
+    end
+
+    error = assert_raise(RuntimeError) { capture_stdout { @instance.run_queued_ssh_command('pnpm i', true, 0.01, 10) } }
+    assert_match(/pnpm i/, error.message)
+    assert_equal(5, attempts)
+  end
+
+  def test_run_queued_ssh_command_kills_attempt_after_max_polls_and_retries
+    attempts = 0
+    @instance.define_singleton_method(:run_ssh_in_terminal) do |_command|
+      attempts += 1
+      sleep 5 if attempts == 1
+    end
+
+    output = capture_stdout { @instance.run_queued_ssh_command('pnpm i', true, 0.01, 3) }
+
+    assert_equal(2, attempts)
+    assert_match(/COMMAND KILLED: pnpm i/, output)
   end
 
   def test_write_build_number_file_raises_when_build_number_missing
